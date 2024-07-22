@@ -151,6 +151,7 @@ public class ModbusTCPVehicleCommAdapter
       PlantModelService plantModelService
   ) {
     super(new CustomProcessModel(vehicle), "RECHARGE", 1000, executor);
+    LOG.warning(String.format("HIIIIIIIIIIIIIIIIIIII"));
     this.vehicle = requireNonNull(vehicle, "vehicle");
     this.configProvider = new VehicleConfigurationProvider();
     this.host = configProvider.getConfiguration(vehicle.getName()).host();
@@ -172,7 +173,7 @@ public class ModbusTCPVehicleCommAdapter
     getProcessModel().setState(Vehicle.State.IDLE);
     LOG.warning("Device has been set to IDLE state");
     ((ExecutorService) getExecutor()).submit(() -> getProcessModel().setPosition("Point-0026"));
-    LOG.warning("Device has been set to Point-0001");
+    LOG.warning("Device has been set to Point-0026");
     getProcessModel().setLoadHandlingDevices(
         List.of(new LoadHandlingDevice(LHD_NAME, false))
     );
@@ -299,10 +300,21 @@ public class ModbusTCPVehicleCommAdapter
    */
   @Override
   public synchronized void enable() {
+    LOG.warning("Attempting to enable ModbusTCPVehicleCommAdapter for " + getName());
     if (isEnabled()) {
+      LOG.warning("ModbusTCPVehicleCommAdapter for " + getName() + " is already enabled");
       return;
     }
-    super.enable();
+    try {
+      super.enable();
+      LOG.warning("ModbusTCPVehicleCommAdapter for " + getName() + " enabled successfully");
+    }
+    catch (Exception e) {
+      LOG.severe(
+          "Error enabling ModbusTCPVehicleCommAdapter for " + getName() + ": " + e.getMessage()
+      );
+      e.printStackTrace();
+    }
   }
 
   /**
@@ -997,7 +1009,6 @@ public class ModbusTCPVehicleCommAdapter
       if (request.isReadOperation()) {
         rwLock.readLock().lock();
         try {
-          // 執行讀操作
           sendModbusRequest(request.getRequest(), request.getAddress());
         }
         finally {
@@ -1007,7 +1018,6 @@ public class ModbusTCPVehicleCommAdapter
       else {
         rwLock.writeLock().lock();
         try {
-          // 執行寫操作
           sendModbusRequest(request.getRequest(), request.getAddress());
         }
         finally {
@@ -1213,7 +1223,7 @@ public class ModbusTCPVehicleCommAdapter
   }
 
   public class PositionUpdater {
-    private static final int UPDATE_INTERVAL = 20;
+    private static final int UPDATE_INTERVAL = 80;
     private static final int MAX_INTERPOLATION_TIME = 500;
     private static final int POSITION_REGISTER_ADDRESS = 110;
 
