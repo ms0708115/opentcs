@@ -374,6 +374,8 @@ public class ModbusTCPPeripheralCommunicationAdapter
                   value -> {
                     IntStream.range(0, 2).forEachOrdered(i -> {
                       getZIPInfo(value, i);
+                      setProcessModel(getProcessModel().withState(PeripheralInformation.State.EXECUTING));
+                      sendProcessModelChangedEvent(PeripheralProcessModel.Attribute.STATE);
                     });
                   }
               );
@@ -382,8 +384,11 @@ public class ModbusTCPPeripheralCommunicationAdapter
             location.getName(), "OHB"
         )
             == 0) {
-              readSingleRegister(303, 1).thenAccept(
-                  this::getOHBInfo
+              readSingleRegister(303, 1).thenAccept( value ->{
+                    getOHBInfo(value);
+                    setProcessModel(getProcessModel().withState(PeripheralInformation.State.EXECUTING));
+                    sendProcessModelChangedEvent(PeripheralProcessModel.Attribute.STATE);
+                  }
               );
             }
         else if (String.CASE_INSENSITIVE_ORDER.compare(
@@ -393,6 +398,8 @@ public class ModbusTCPPeripheralCommunicationAdapter
               value -> {
                 IntStream.range(0, 2).forEachOrdered(i -> {
                   getSideForkInfo(value, i);
+                  setProcessModel(getProcessModel().withState(PeripheralInformation.State.EXECUTING));
+                  sendProcessModelChangedEvent(PeripheralProcessModel.Attribute.STATE);
                 });
               }
           );
@@ -429,8 +436,6 @@ public class ModbusTCPPeripheralCommunicationAdapter
             }
             heartBeatCount.set(0);
             heartBeatFail.set(false);
-            setProcessModel(getProcessModel().withState(PeripheralInformation.State.EXECUTING));
-            sendProcessModelChangedEvent(PeripheralProcessModel.Attribute.STATE);
           }
       );
     }, 0, 200, TimeUnit.MILLISECONDS);
