@@ -62,7 +62,8 @@ public class ModbusTCPPeripheralCommunicationAdapter
   private boolean initialized;
   private final ScheduledExecutorService executor;
   private ModbusTcpMaster master;
-  private final AtomicBoolean heartBeatToggle = new AtomicBoolean(false);
+  private final AtomicBoolean readHeartBeatToggle = new AtomicBoolean(false);
+  private final AtomicBoolean writeHeartBeatToggle = new AtomicBoolean(false);
   private final AtomicInteger heartBeatCount = new AtomicInteger(0);
   private final AtomicBoolean heartBeatFail = new AtomicBoolean(false);
   private final AtomicInteger loadingEFEMStatus = new AtomicInteger(0);
@@ -73,7 +74,8 @@ public class ModbusTCPPeripheralCommunicationAdapter
   private final AtomicInteger loadingOHBStatus = new AtomicInteger(0);
   private final AtomicInteger loadingSideFork1Status = new AtomicInteger(0);
   private final AtomicInteger loadingSideFork2Status = new AtomicInteger(0);
-  private ScheduledFuture<?> heartBeatFuture;
+  private ScheduledFuture<?> readHeartBeatFuture;
+  private ScheduledFuture<?> writeHeartBeatFuture;
   private ScheduledFuture<?> pollingStatusFuture;
   private final PeripheralDeviceConfigurationProvider configProvider;
   private TCSResourceReference<Location> location;
@@ -130,7 +132,10 @@ public class ModbusTCPPeripheralCommunicationAdapter
       return;
     }
     super.terminate();
-    stopHeartBeat();
+    stopReadHeartBeat();
+    if (location.getName().equals("Magazine_loadport")) {
+      stopWriteHeartBeat();
+    }
     stopPollingSensor();
     initialized = false;// Stop the heartbeat mechanism
   }
@@ -156,7 +161,10 @@ public class ModbusTCPPeripheralCommunicationAdapter
             this.isConnected = true;
             LOG.info("Successfully connected to Modbus TCP server");
             getProcessModel().withCommAdapterConnected(true);
-            startHeartbeat();
+            startReadHeartbeat();
+            if (location.getName().equals("Magazine_loadport")) {
+              startWriteHeartBeat();
+            }
             pollingSensorStatus();
 
           })
@@ -183,7 +191,10 @@ public class ModbusTCPPeripheralCommunicationAdapter
             this.isConnected = false;
             getProcessModel().withCommAdapterConnected(false);
             this.master = null;
-            stopHeartBeat();
+            stopReadHeartBeat();
+            if (location.getName().equals("Magazine_loadport")) {
+              stopWriteHeartBeat();
+            }
             stopPollingSensor();
           })
           .exceptionally(ex -> {
@@ -419,14 +430,14 @@ public class ModbusTCPPeripheralCommunicationAdapter
     }
   }
 
-  private void startHeartbeat() {
-    LOG.info("Starting sending heart bit, Peripheral Name : " + location.getName() + ".");
+  private void startReadHeartbeat() {
+    LOG.info("Starting reading heart bit, Peripheral Name : " + location.getName() + ".");
 
-    heartBeatFuture = executor.scheduleAtFixedRate(() -> {
+    readHeartBeatFuture = executor.scheduleAtFixedRate(() -> {
       readSingleRegister(300, 1).thenAccept(
           value -> {
             boolean newHeartBit = value.get(300) == 1;
-            boolean oldHeartBit = heartBeatToggle.getAndSet(newHeartBit);
+            boolean oldHeartBit = readHeartBeatToggle.getAndSet(newHeartBit);
             if (oldHeartBit == newHeartBit) {
               if (heartBeatCount.get() >= 3) {
                 LOG.info(
@@ -445,10 +456,26 @@ public class ModbusTCPPeripheralCommunicationAdapter
     }, 0, 200, TimeUnit.MILLISECONDS);
   }
 
-  private void stopHeartBeat() {
-    if (heartBeatFuture != null && !heartBeatFuture.isCancelled()) {
+  private void startWriteHeartBeat() {
+    LOG.info("Starting sending heart bit, Peripheral Name : " + location.getName() + ".");
+
+    writeHeartBeatFuture = executor.scheduleAtFixedRate(() -> {
+      boolean value = writeHeartBeatToggle.getAndSet(writeHeartBeatToggle.get());
+      writeSingleRegister(300, value ? 1 : 0);
+    }, 0, 500, TimeUnit.MILLISECONDS);
+  }
+
+  private void stopReadHeartBeat() {
+    if (readHeartBeatFuture != null && !readHeartBeatFuture.isCancelled()) {
+      LOG.info("Stop reading heart bit.");
+      readHeartBeatFuture.cancel(true);
+    }
+  }
+
+  private void stopWriteHeartBeat() {
+    if (writeHeartBeatFuture != null && !writeHeartBeatFuture.isCancelled()) {
       LOG.info("Stop sending heart bit.");
-      heartBeatFuture.cancel(true);
+      writeHeartBeatFuture.cancel(true);
     }
   }
 
