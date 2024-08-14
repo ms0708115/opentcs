@@ -73,7 +73,7 @@ public class PeripheralDeviceConfigurationProvider {
         String specificPeripheral = "";
         for (int i = 0; i < 4; i++) {
           if (i == 0) {
-            specificPeripheral = "STK_IN";
+            specificPeripheral = "STK_2";
           }
           else if (i == 1) {
             specificPeripheral = "OHB";
@@ -85,18 +85,22 @@ public class PeripheralDeviceConfigurationProvider {
             specificPeripheral = "Magazine_loadport";
           }
           PeripheralDeviceConfiguration config = loadedConfigs.get(specificPeripheral);
-
-          if (config != null) {
-            LOG.info(
-                String.format(
-                    "Configuration for %s: currentStrategy: %s, host: %s, port: %d",
-                    specificPeripheral, config.currentStrategy(), config.host(), config.port()
-                )
-            );
-          }
-          else {
+          if (config == null) {
             LOG.warning("Configuration for " + specificPeripheral + " not found.");
           }
+          /*
+           * if (config != null) {
+           * LOG.info(
+           * String.format(
+           * "Configuration for %s: currentStrategy: %s, host: %s, port: %d",
+           * specificPeripheral, config.currentStrategy(), config.host(), config.port()
+           * )
+           * );
+           * }
+           * else {
+           * LOG.warning("Configuration for " + specificPeripheral + " not found.");
+           * }
+           */
         }
       }
       else {
