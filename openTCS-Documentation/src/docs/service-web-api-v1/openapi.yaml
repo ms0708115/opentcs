@@ -1045,6 +1045,36 @@ paths:
       responses:
         "200":
           description: Successful response
+  "/peripherals/{NAME}":
+    get:
+      tags:
+        - Peripherals
+      summary: Retrieves the Location information of this peripheral.
+      description: ""
+      parameters:
+        - name: NAME
+          in: path
+          description: The name of the peripheral device/location.
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeripheralInformation"
+        "404":
+          description: Referencing object that could not be found.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                  description: Details on the actual error.
+                  example: Could not find location 'Fire door 002'.
   "/peripherals/{NAME}/commAdapter/attachmentInformation":
     get:
       tags:
@@ -1075,6 +1105,7 @@ paths:
                   type: string
                   description: Details on the actual error.
                   example: Could not find location 'Fire door 002'.
+
   "/peripherals/{NAME}/commAdapter/attachment":
     put:
       tags:
@@ -2162,6 +2193,30 @@ components:
       required:
         - operation
         - locationName
+    PeripheralInformation:
+      title: Peripheral Information
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: The name of the peripheral job.
+          example: PJob-01
+        state:
+          type: string
+          description: The peripheral job's current state.
+          enum:
+            - NO_PERIPHERAL
+            - UNKNOWN
+            - UNAVAILABLE
+            - ERROR
+            - IDLE
+            - EXECUTING
+        properties:
+          type: array
+          items:
+            $ref: "#/components/schemas/Property"
+          description: The order sequences properties
     PeripheralAttachmentInformation:
       title: Attachment Information
       type: object
@@ -3009,13 +3064,13 @@ components:
           example:
             - Point-C
             - Point-D
-            - Point-E   
+            - Point-E
         resourcesToAvoid:
           type: array
           description: The resources to be avoided for each route.
           example:
             - Path-CA
-            - Point-B     
+            - Point-B
       required:
         - destinationPoints
     RoutesResponse:
