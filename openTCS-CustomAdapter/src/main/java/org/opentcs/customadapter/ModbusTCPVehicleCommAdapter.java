@@ -753,7 +753,7 @@ public class ModbusTCPVehicleCommAdapter
       return 1;
     }
     else if (locationNameFromDestinationPoint != null && locationNameFromDestinationPoint.equals(
-        "STK_IN"
+        "STK_2"
     )) {
       return 2;
     }
