@@ -52,14 +52,6 @@ public abstract class PeripheralCommunicationAdapter
   }
 
   @Override
-  public synchronized void enable() {
-    if (isEnabled()) {
-      return;
-    }
-    super.enable();
-  }
-
-  @Override
   protected void connectPeripheral() {
     LOG.info("Connecting to peripheral Device...");
     if (performConnection()) {
@@ -100,7 +92,6 @@ public abstract class PeripheralCommunicationAdapter
       @Nonnull
       PeripheralJobCallback callback
   ) {
-
   }
 
   @Override
