@@ -675,7 +675,8 @@ public class ModbusTCPPeripheralCommunicationAdapter
         .exceptionally(ex -> {
           if (ex instanceof TimeoutException) {
             LOG.info("Request update EFEM response handshake timeout");
-          } else {
+          }
+          else {
             LOG.info("Error processing peripheral job: " + ex.getMessage());
           }
           callback.peripheralJobFailed(job.getReference());
@@ -704,7 +705,10 @@ public class ModbusTCPPeripheralCommunicationAdapter
     ).thenRun(() -> {
       LOG.info("Successfully wrote registers at address 311 and 310 value return to zero");
     }).exceptionally(ex -> {
-      LOG.severe("Failed to write registers at address 311 and 310 value return to zero: " + ex.getMessage());
+      LOG.severe(
+          "Failed to write registers at address 311 and 310 value return to zero: " + ex
+              .getMessage()
+      );
       return null;
     });
   }
