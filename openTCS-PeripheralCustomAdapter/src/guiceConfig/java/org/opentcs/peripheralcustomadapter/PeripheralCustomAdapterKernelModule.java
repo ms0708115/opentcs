@@ -27,7 +27,7 @@ public class PeripheralCustomAdapterKernelModule
   @Override
   protected void configure() {
     bind(ScheduledExecutorService.class).annotatedWith(Names.named("executor2")).toInstance(
-        Executors.newScheduledThreadPool(1)
+        Executors.newScheduledThreadPool(4)
     );
     bind(PeripheralCustomCommunicationAdapterFactory.class).to(
         PeripheralCustomCommunicationAdapterIFactoryImpl.class
