@@ -1,9 +1,11 @@
 package org.opentcs.peripheralcustomadapter;
 
 import static java.util.Objects.requireNonNull;
+import static org.opentcs.util.Assertions.checkState;
 
 import com.digitalpetri.modbus.master.ModbusTcpMaster;
 import com.digitalpetri.modbus.master.ModbusTcpMasterConfig;
+import com.digitalpetri.modbus.requests.ModbusRequest;
 import com.digitalpetri.modbus.requests.ReadInputRegistersRequest;
 import com.digitalpetri.modbus.requests.WriteMultipleRegistersRequest;
 import com.digitalpetri.modbus.responses.ModbusResponse;
@@ -14,6 +16,7 @@ import com.google.inject.assistedinject.Assisted;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.timeout.TimeoutException;
+import jakarta.annotation.Nonnull;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -33,7 +36,10 @@ import org.opentcs.customizations.kernel.KernelExecutor;
 import org.opentcs.data.model.Location;
 import org.opentcs.data.model.PeripheralInformation;
 import org.opentcs.data.model.TCSResourceReference;
+import org.opentcs.data.peripherals.PeripheralJob;
+import org.opentcs.drivers.peripherals.PeripheralJobCallback;
 import org.opentcs.drivers.peripherals.PeripheralProcessModel;
+import org.opentcs.util.ExplainedBoolean;
 import org.opentcs.util.event.EventHandler;
 
 public class ModbusTCPPeripheralCommunicationAdapter
@@ -161,11 +167,11 @@ public class ModbusTCPPeripheralCommunicationAdapter
             this.isConnected = true;
             LOG.info("Successfully connected to Modbus TCP server");
             getProcessModel().withCommAdapterConnected(true);
-            startReadHeartbeat();
+            //startReadHeartbeat();
             if (location.getName().equals("Magazine_loadport")) {
               startWriteHeartBeat();
             }
-            pollingSensorStatus();
+            // pollingSensorStatus();
 
           })
           .exceptionally(ex -> {
@@ -231,7 +237,7 @@ public class ModbusTCPPeripheralCommunicationAdapter
         peripheralService.updateObjectProperty(
             location, "Magazine_Quantity ", String.valueOf(eFEMQuantity.get())
         );
-        LOG.info("Peripheral :" + location.getName() + ", Count :" + eFEMQuantity.get());
+        //LOG.info("Peripheral :" + location.getName() + ", Quantity :" + eFEMQuantity.get());
       }
       case 2 -> {
 
@@ -287,15 +293,15 @@ public class ModbusTCPPeripheralCommunicationAdapter
         int oldResult = loadingSideFork1Status.getAndSet(newResult);
         if (newResult != oldResult) {
           if (newResult == 2) {
-            peripheralService.updateObjectProperty(location, "LoadingStatus", "LOAD");
+            //peripheralService.updateObjectProperty(location, "LoadingStatus", "LOAD");
             LOG.info("Peripheral :" + location.getName() + "#1, Current Status :Load");
           }
           else if (newResult == 1) {
-            peripheralService.updateObjectProperty(location, "LoadingStatus", "UNLOAD");
+            // peripheralService.updateObjectProperty(location, "LoadingStatus", "UNLOAD");
             LOG.info("Peripheral :" + location.getName() + "#1, Current Status :Unload");
           }
           else {
-            peripheralService.updateObjectProperty(location, "LoadingStatus", "UNKNOWN");
+            // peripheralService.updateObjectProperty(location, "LoadingStatus", "UNKNOWN");
             LOG.info("Peripheral :" + location.getName() + "#1, Current Status :Unknown");
           }
         }
@@ -329,15 +335,15 @@ public class ModbusTCPPeripheralCommunicationAdapter
         int oldResult = loadingZIP1Status.getAndSet(newResult);
         if (newResult != oldResult) {
           if (newResult == 2) {
-            peripheralService.updateObjectProperty(location, "LoadingStatus", "LOAD");
+            //peripheralService.updateObjectProperty(location, "LoadingStatus", "LOAD");
             LOG.info("Peripheral :" + location.getName() + "#1, Current Status :Load");
           }
           else if (newResult == 1) {
-            peripheralService.updateObjectProperty(location, "LoadingStatus", "UNLOAD");
+            // peripheralService.updateObjectProperty(location, "LoadingStatus", "UNLOAD");
             LOG.info("Peripheral :" + location.getName() + "#1, Current Status :Unload");
           }
           else {
-            peripheralService.updateObjectProperty(location, "LoadingStatus", "UNKNOWN");
+            // peripheralService.updateObjectProperty(location, "LoadingStatus", "UNKNOWN");
             LOG.info("Peripheral :" + location.getName() + "#1, Current Status :Unknown");
           }
         }
@@ -365,59 +371,66 @@ public class ModbusTCPPeripheralCommunicationAdapter
   }
 
   private void pollingSensorStatus() {
-    pollingStatusFuture = executor.scheduleAtFixedRate(() -> {
+    pollingStatusFuture = executor.scheduleWithFixedDelay(() -> {
       if (!heartBeatFail.get()) {
-        if (String.CASE_INSENSITIVE_ORDER.compare(location.getName(), "Magazine_loadport")
-            == 0) {
-          readSingleRegister(301, 3).thenAccept(
-              value -> {
-                IntStream.range(0, 3).forEachOrdered(i -> {
-                  getEFEMInfo(value, i);
-                });
+        try {
+          if (String.CASE_INSENSITIVE_ORDER.compare(location.getName(), "Magazine_loadport")
+              == 0) {
+            readSingleRegister(301, 3).thenAccept(
+                value -> {
+                  IntStream.range(0, 3).forEachOrdered(i -> {
+                    getEFEMInfo(value, i);
+                  });
+                }
+            );
+          }
+          else if (String.CASE_INSENSITIVE_ORDER.compare(
+              location.getName(), "STK_2"
+          )
+              == 0) {
+                readSingleRegister(301, 2).thenAccept(
+                    value -> {
+                      IntStream.range(0, 2).forEachOrdered(i -> {
+                        getZIPInfo(value, i);
+                        setProcessModel(
+                            getProcessModel().withState(PeripheralInformation.State.EXECUTING)
+                        );
+                        sendProcessModelChangedEvent(PeripheralProcessModel.Attribute.STATE);
+                      });
+                    }
+                );
               }
-          );
-        }
-        else if (String.CASE_INSENSITIVE_ORDER.compare(
-            location.getName(), "STK_IN"
-        )
-            == 0) {
-              readSingleRegister(301, 2).thenAccept(
-                  value -> {
-                    IntStream.range(0, 2).forEachOrdered(i -> {
-                      getZIPInfo(value, i);
-                      setProcessModel(
-                          getProcessModel().withState(PeripheralInformation.State.EXECUTING)
-                      );
-                      sendProcessModelChangedEvent(PeripheralProcessModel.Attribute.STATE);
-                    });
-                  }
-              );
-            }
-        else if (String.CASE_INSENSITIVE_ORDER.compare(
-            location.getName(), "OHB"
-        )
-            == 0) {
-              readSingleRegister(303, 1).thenAccept(value -> {
-                getOHBInfo(value);
-                setProcessModel(getProcessModel().withState(PeripheralInformation.State.EXECUTING));
-                sendProcessModelChangedEvent(PeripheralProcessModel.Attribute.STATE);
-              }
-              );
-            }
-        else if (String.CASE_INSENSITIVE_ORDER.compare(
-            location.getName(), "Sidefork"
-        ) == 0) {
-          readSingleRegister(305, 2).thenAccept(
-              value -> {
-                IntStream.range(0, 2).forEachOrdered(i -> {
-                  getSideForkInfo(value, i);
+          else if (String.CASE_INSENSITIVE_ORDER.compare(
+              location.getName(), "OHB"
+          )
+              == 0) {
+                readSingleRegister(303, 1).thenAccept(value -> {
+                  getOHBInfo(value);
                   setProcessModel(
                       getProcessModel().withState(PeripheralInformation.State.EXECUTING)
                   );
                   sendProcessModelChangedEvent(PeripheralProcessModel.Attribute.STATE);
-                });
+                }
+                );
               }
-          );
+          else if (String.CASE_INSENSITIVE_ORDER.compare(
+              location.getName(), "Sidefork"
+          ) == 0) {
+            readSingleRegister(305, 2).thenAccept(
+                value -> {
+                  IntStream.range(0, 2).forEachOrdered(i -> {
+                    getSideForkInfo(value, i);
+                    setProcessModel(
+                        getProcessModel().withState(PeripheralInformation.State.EXECUTING)
+                    );
+                    sendProcessModelChangedEvent(PeripheralProcessModel.Attribute.STATE);
+                  });
+                }
+            );
+          }
+        }
+        catch (Exception e) {
+          LOG.severe("Error in sensor polling: " + e.getMessage());
         }
       }
     }, 0, 500, TimeUnit.MILLISECONDS);
@@ -433,35 +446,48 @@ public class ModbusTCPPeripheralCommunicationAdapter
   private void startReadHeartbeat() {
     LOG.info("Starting reading heart bit, Peripheral Name : " + location.getName() + ".");
 
-    readHeartBeatFuture = executor.scheduleAtFixedRate(() -> {
-      readSingleRegister(300, 1).thenAccept(
-          value -> {
-            boolean newHeartBit = value.get(300) == 1;
-            boolean oldHeartBit = readHeartBeatToggle.getAndSet(newHeartBit);
-            if (oldHeartBit == newHeartBit) {
-              if (heartBeatCount.get() >= 3) {
-                LOG.info(
-                    "The new heart bit and old heart bit is Same, Peripheral Name : " + location
-                        .getName() + "."
-                );
-                heartBeatFail.set(true);
-                setProcessModel(getProcessModel().withState(PeripheralInformation.State.ERROR));
-              }
-              heartBeatCount.addAndGet(1);
+    readHeartBeatFuture = executor.scheduleWithFixedDelay(() -> {
+      try {
+        readSingleRegister(300, 1).thenAccept(value -> {
+          boolean newHeartBit = value.get(300) == 1;
+          boolean oldHeartBit = readHeartBeatToggle.getAndSet(newHeartBit);
+          if (oldHeartBit == newHeartBit) {
+            if (heartBeatCount.incrementAndGet() >= 2) {
+              LOG.info("Heart bit unchanged, Peripheral: " + location.getName());
+              heartBeatFail.set(true);
+              setProcessModel(getProcessModel().withState(PeripheralInformation.State.ERROR));
             }
+          }
+          else {
             heartBeatCount.set(0);
             heartBeatFail.set(false);
           }
-      );
-    }, 0, 200, TimeUnit.MILLISECONDS);
+        });
+      }
+      catch (Exception e) {
+        LOG.severe("Error in heartbeat: " + e.getMessage());
+      }
+    }, 0, 300, TimeUnit.MILLISECONDS);
   }
 
   private void startWriteHeartBeat() {
     LOG.info("Starting sending heart bit, Peripheral Name : " + location.getName() + ".");
 
-    writeHeartBeatFuture = executor.scheduleAtFixedRate(() -> {
-      boolean value = writeHeartBeatToggle.getAndSet(writeHeartBeatToggle.get());
-      writeSingleRegister(300, value ? 1 : 0);
+    writeHeartBeatFuture = executor.scheduleWithFixedDelay(() -> {
+      try {
+        boolean value = writeHeartBeatToggle.getAndSet(!writeHeartBeatToggle.get());
+        CompletableFuture<Void> writeFuture = writeSingleRegister(300, value ? 1 : 0);
+
+        writeFuture.thenRun(() -> {
+          LOG.fine("Heart bit sent successfully: " + (value ? 1 : 0));
+        }).exceptionally(ex -> {
+          LOG.warning("Failed to send heart bit: " + ex.getMessage());
+          return null;
+        });
+      }
+      catch (Exception e) {
+        LOG.severe("Error in write heartbeat: " + e.getMessage());
+      }
     }, 0, 500, TimeUnit.MILLISECONDS);
   }
 
@@ -486,7 +512,7 @@ public class ModbusTCPPeripheralCommunicationAdapter
 
     return sendModbusRequest(request)
         .thenAccept(response -> {
-          LOG.info("Successfully wrote register at address " + address + " with value " + value);
+          // LOG.info("Successfully wrote register at address " + address + " with value " + value);
         })
         .exceptionally(ex -> {
           LOG.severe("Failed to write register at address " + address + ": " + ex.getMessage());
@@ -520,7 +546,7 @@ public class ModbusTCPPeripheralCommunicationAdapter
   }
 
   private CompletableFuture<ModbusResponse> sendModbusRequest(
-      com.digitalpetri.modbus.requests.ModbusRequest request
+      ModbusRequest request
   ) {
     return sendModbusRequestWithRetry(request, 3).exceptionally(ex -> {
       LOG.severe("All retries failed for Modbus request: " + ex.getMessage());
@@ -529,7 +555,7 @@ public class ModbusTCPPeripheralCommunicationAdapter
   }
 
   private CompletableFuture<ModbusResponse> sendModbusRequestWithRetry(
-      com.digitalpetri.modbus.requests.ModbusRequest request,
+      ModbusRequest request,
       int retriesLeft
   ) {
     if (master == null) {
@@ -560,7 +586,7 @@ public class ModbusTCPPeripheralCommunicationAdapter
         });
   }
 
-  private ModbusResponse sendRequest(com.digitalpetri.modbus.requests.ModbusRequest request) {
+  private ModbusResponse sendRequest(ModbusRequest request) {
     try {
       return master.sendRequest(request, 0).get(500, TimeUnit.MILLISECONDS);
     }
@@ -601,5 +627,99 @@ public class ModbusTCPPeripheralCommunicationAdapter
       };
     }
     return response;
+  }
+
+  @Override
+  public synchronized void process(
+      @Nonnull
+      PeripheralJob job,
+      @Nonnull
+      PeripheralJobCallback callback
+  ) {
+    ExplainedBoolean canProcess = canProcess(job);
+    checkState(
+        canProcess.getValue(),
+        "%s: Can't process job: %s",
+        getProcessModel().getLocation().getName(),
+        canProcess.getReason()
+    );
+    CompletableFuture<Void> processFuture = new CompletableFuture<>();
+
+    sendHandshakeToEFEM(job)
+        .thenCompose(__ -> {
+          ScheduledFuture<?> scheduledFuture = executor.scheduleAtFixedRate(() -> {
+            readSingleRegister(310, 2)
+                .thenAccept(value -> {
+                  LOG.info(
+                      "Read data 310: " + value.get(310) + " Read data 311: " + value.get(311)
+                          + ", Current Time: " + System.currentTimeMillis()
+                  );
+
+                  if (value.get(310) == 1 && value.get(311) == 1) {
+                    processFuture.complete(null);
+                  }
+                })
+                .exceptionally(ex -> {
+                  LOG.severe("Error reading registers: " + ex.getMessage());
+                  return null;
+                });
+          }, 0, 500, TimeUnit.MILLISECONDS);
+
+          return processFuture.whenComplete((result, ex) -> scheduledFuture.cancel(false));
+        })
+        .orTimeout(5, TimeUnit.SECONDS)
+        .thenRun(() -> {
+          callback.peripheralJobFinished(job.getReference());
+          LOG.info("Peripheral job finished successfully");
+        })
+        .exceptionally(ex -> {
+          if (ex instanceof TimeoutException) {
+            LOG.info("Request update EFEM response handshake timeout");
+          } else {
+            LOG.info("Error processing peripheral job: " + ex.getMessage());
+          }
+          callback.peripheralJobFailed(job.getReference());
+          return null;
+        })
+        .whenComplete((__, ex) -> sendHandshakeReturnZeroToEFEM());
+  }
+
+  private CompletableFuture<Void> sendHandshakeToEFEM(PeripheralJob job) {
+    int value = convertJobOperation(job.getPeripheralOperation().getOperation());
+    return CompletableFuture.allOf(
+        writeSingleRegister(311, value),
+        writeSingleRegister(310, 1)
+    ).thenRun(() -> {
+      LOG.info("Successfully wrote registers for handshake");
+    }).exceptionally(ex -> {
+      LOG.severe("Failed to write registers for handshake: " + ex.getMessage());
+      throw new CompletionException(ex);
+    });
+  }
+
+  private CompletableFuture<Void> sendHandshakeReturnZeroToEFEM() {
+    return CompletableFuture.allOf(
+        writeSingleRegister(311, 0),
+        writeSingleRegister(310, 0)
+    ).thenRun(() -> {
+      LOG.info("Successfully wrote registers at address 311 and 310 value return to zero");
+    }).exceptionally(ex -> {
+      LOG.severe("Failed to write registers at address 311 and 310 value return to zero: " + ex.getMessage());
+      return null;
+    });
+  }
+
+  private int convertJobOperation(String operation) {
+    switch (operation) {
+      case "Load" -> {
+        return 1;
+      }
+      case "Unload" -> {
+        return 2;
+      }
+      default -> {
+        return 0;
+      }
+    }
   }
 }
