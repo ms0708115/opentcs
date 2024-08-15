@@ -103,4 +103,17 @@ public class PeripheralHandler {
     });
   }
 
+  public Location getPeripheralCommAdapterInformation(String name)
+      throws ObjectUnknownException {
+    requireNonNull(name, "name");
+
+    return executorWrapper.callAndWait(() -> {
+      Location location = peripheralService.fetchObject(Location.class, name);
+      if (location == null) {
+        throw new ObjectUnknownException("Unknown location: " + name);
+      }
+
+      return peripheralService.fetchObject(Location.class, name);
+    });
+  }
 }

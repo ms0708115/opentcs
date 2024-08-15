@@ -21,6 +21,7 @@ import org.opentcs.kernel.extensions.servicewebapi.RequestHandler;
 import org.opentcs.kernel.extensions.servicewebapi.v1.binding.GetOrderSequenceResponseTO;
 import org.opentcs.kernel.extensions.servicewebapi.v1.binding.GetPeripheralAttachmentInfoResponseTO;
 import org.opentcs.kernel.extensions.servicewebapi.v1.binding.GetPeripheralJobResponseTO;
+import org.opentcs.kernel.extensions.servicewebapi.v1.binding.GetPeripheralResponseTo;
 import org.opentcs.kernel.extensions.servicewebapi.v1.binding.GetTransportOrderResponseTO;
 import org.opentcs.kernel.extensions.servicewebapi.v1.binding.GetVehicleAttachmentInfoResponseTO;
 import org.opentcs.kernel.extensions.servicewebapi.v1.binding.PlantModelTO;
@@ -255,6 +256,10 @@ public class V1RequestHandler
         "/peripherals/:NAME/commAdapter/attachmentInformation",
         this::handleGetPeripheralCommAdapterAttachmentInfo
     );
+    service.get(
+        "/peripherals/:NAME",
+        this::handleGetPeripheralInfo
+    );
     service.put(
         "/peripherals/:NAME/commAdapter/attachment",
         this::handlePutPeripheralCommAdapterAttachment
@@ -278,6 +283,36 @@ public class V1RequestHandler
     service.post(
         "/peripheralJobs/dispatcher/trigger",
         this::handlePostPeripheralJobsDispatchTrigger
+    );
+    service.get(
+        "/vehicles/:NAME/loadHandlingDevices",
+        this::handleGetVehicleLoadHandlingDevices
+    );
+  }
+
+  private Object handleGetPeripheralInfo(Request request, Response response)
+      throws ObjectUnknownException,
+        IllegalArgumentException {
+    response.type(HttpConstants.CONTENT_TYPE_APPLICATION_JSON_UTF8);
+    return jsonBinder.toJson(
+        GetPeripheralResponseTo.fromPeripheral(
+            peripheralHandler.getPeripheralCommAdapterInformation(
+                request.params(":NAME")
+            )
+        )
+    );
+  }
+
+  private Object handleGetPeripheralInfo(Request request, Response response)
+      throws ObjectUnknownException,
+        IllegalArgumentException {
+    response.type(HttpConstants.CONTENT_TYPE_APPLICATION_JSON_UTF8);
+    return jsonBinder.toJson(
+        GetPeripheralResponseTo.fromPeripheral(
+            peripheralHandler.getPeripheralCommAdapterInformation(
+                request.params(":NAME")
+            )
+        )
     );
   }
 
@@ -664,6 +699,14 @@ public class V1RequestHandler
     response.type(HttpConstants.CONTENT_TYPE_TEXT_PLAIN_UTF8);
     jobDispatcherHandler.triggerJobDispatcher();
     return "";
+  }
+
+  private Object handleGetVehicleLoadHandlingDevices(Request request, Response response)
+      throws ObjectUnknownException {
+    response.type(HttpConstants.CONTENT_TYPE_APPLICATION_JSON_UTF8);
+    return jsonBinder.toJson(
+        vehicleHandler.getVehicleLoadHandlingDevices(request.params(":NAME"))
+    );
   }
 
   private String valueIfKeyPresent(QueryParamsMap queryParams, String key) {

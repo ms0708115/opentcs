@@ -19,3 +19,6 @@ include 'openTCS-PlantOverview-Panel-LoadGenerator'
 include 'openTCS-PlantOverview-Panel-ResourceAllocation'
 include 'openTCS-PlantOverview-Themes-Default'
 include 'openTCS-Documentation'
+include 'openTCS-CustomAdapter'
+include 'openTCS-PeripheralCustomAdapter'
+
