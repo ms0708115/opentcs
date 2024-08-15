@@ -236,12 +236,12 @@ public class ModbusTCPVehicleCommAdapter
             logError("Failed to write or read heartbeat: ", ex);
             return null;
           });
-    }, 0, 300, TimeUnit.MILLISECONDS);
+    }, 0, 500, TimeUnit.MILLISECONDS);
   }
 
   private boolean toggleHeartbeatAndRegisterWriting() {
     boolean currentValue = heartBeatToggle.getAndSet(!heartBeatToggle.get());
-    writeSingleRegister(100, currentValue ? 1 : 0);
+    writeSingleRegister(500, currentValue ? 1 : 0);
     return currentValue;
   }
 
@@ -259,13 +259,8 @@ public class ModbusTCPVehicleCommAdapter
   }
 
   private void handleHeartbeatValueMismatch(boolean currentValue, int value) {
+    LOG.warning(String.format("current read heart bit value: %d", value));
     if (value != (currentValue ? 1 : 0)) {
-//      LOG.warning(
-//          String.format(
-//              "%s: Heartbeat value mismatch! Retrying..",
-//              vehicle.getName()
-//          )
-//      );
       writeSingleRegister(100, currentValue ? 1 : 0)
           .exceptionally(ex -> {
             logError("Failed to retry heartbeat write: ", ex);
@@ -1410,7 +1405,7 @@ public class ModbusTCPVehicleCommAdapter
       ReadHoldingRegistersResponse readResponse
   ) {
     ByteBuf registers = readResponse.getRegisters();
-//    registers.retain();
+    registers.retain();
     return new ReadHoldingRegistersResponse(registers) {
       @Override
       public boolean release() {
@@ -1442,7 +1437,7 @@ public class ModbusTCPVehicleCommAdapter
       ReadInputRegistersResponse readInputResponse
   ) {
     ByteBuf registers = readInputResponse.getRegisters();
-//    registers.retain();
+    registers.retain();
     return new ReadInputRegistersResponse(registers) {
       @Override
       public boolean release() {
