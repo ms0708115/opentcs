@@ -174,7 +174,7 @@ public class ModbusTCPPeripheralCommunicationAdapter
             if (location.getName().equals("Magazine_loadport")) {
               startWriteHeartBeat();
             }
-             pollingSensorStatus();
+            pollingSensorStatus();
 
           })
           .exceptionally(ex -> {
@@ -582,13 +582,13 @@ public class ModbusTCPPeripheralCommunicationAdapter
           boolean shouldRetry = response == null && retriesLeft > 0;
           if (shouldRetry) {
             return CompletableFuture.runAsync(() -> {
-                  try {
-                    Thread.sleep(1000);
-                  }
-                  catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                  }
-                }, executor)
+              try {
+                Thread.sleep(1000);
+              }
+              catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+              }
+            }, executor)
                 .thenCompose(v -> sendModbusRequestWithRetry(request, retriesLeft - 1));
           }
           return CompletableFuture.completedFuture(response);
@@ -631,7 +631,7 @@ public class ModbusTCPPeripheralCommunicationAdapter
       ReadHoldingRegistersResponse readResponse
   ) {
     ByteBuf registers = readResponse.getRegisters();
-     registers.retain();
+    registers.retain();
     return new ReadHoldingRegistersResponse(registers) {
       @Override
       public boolean release() {
