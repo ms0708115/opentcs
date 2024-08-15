@@ -11,11 +11,14 @@ import com.digitalpetri.modbus.requests.WriteMultipleRegistersRequest;
 import com.digitalpetri.modbus.responses.ModbusResponse;
 import com.digitalpetri.modbus.responses.ReadHoldingRegistersResponse;
 import com.digitalpetri.modbus.responses.ReadInputRegistersResponse;
+import com.digitalpetri.modbus.responses.WriteMultipleRegistersResponse;
+import com.digitalpetri.modbus.responses.WriteSingleRegisterResponse;
 import com.google.inject.Inject;
 import com.google.inject.assistedinject.Assisted;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.timeout.TimeoutException;
+import io.netty.util.ReferenceCountUtil;
 import jakarta.annotation.Nonnull;
 import java.util.HashMap;
 import java.util.Map;
@@ -167,11 +170,11 @@ public class ModbusTCPPeripheralCommunicationAdapter
             this.isConnected = true;
             LOG.info("Successfully connected to Modbus TCP server");
             getProcessModel().withCommAdapterConnected(true);
-            //startReadHeartbeat();
+            startReadHeartbeat();
             if (location.getName().equals("Magazine_loadport")) {
               startWriteHeartBeat();
             }
-            // pollingSensorStatus();
+             pollingSensorStatus();
 
           })
           .exceptionally(ex -> {
@@ -536,7 +539,7 @@ public class ModbusTCPPeripheralCommunicationAdapter
             for (int i = 0; i < quantity; i++) {
               int value = responseBuffer.readUnsignedShort();
               result.put(address + i, value);
-              //LOG.info(String.format("READ ADDRESS %d GOT %d", address + i, value));
+              LOG.info(String.format("READ ADDRESS %d GOT %d", address + i, value));
             }
 
             return result;
@@ -548,10 +551,16 @@ public class ModbusTCPPeripheralCommunicationAdapter
   private CompletableFuture<ModbusResponse> sendModbusRequest(
       ModbusRequest request
   ) {
-    return sendModbusRequestWithRetry(request, 3).exceptionally(ex -> {
-      LOG.severe("All retries failed for Modbus request: " + ex.getMessage());
-      throw new CompletionException("Failed to send Modbus request after retries", ex);
-    });
+    return sendModbusRequestWithRetry(request, 3)
+        .whenComplete((response, ex) -> {
+          if (response != null) {
+            ReferenceCountUtil.release(response);
+          }
+        })
+        .exceptionally(ex -> {
+          LOG.severe("All retries failed for Modbus request: " + ex.getMessage());
+          throw new CompletionException("Failed to send Modbus request after retries", ex);
+        });
   }
 
   private CompletableFuture<ModbusResponse> sendModbusRequestWithRetry(
@@ -573,13 +582,13 @@ public class ModbusTCPPeripheralCommunicationAdapter
           boolean shouldRetry = response == null && retriesLeft > 0;
           if (shouldRetry) {
             return CompletableFuture.runAsync(() -> {
-              try {
-                Thread.sleep(1000);
-              }
-              catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-              }
-            }, executor)
+                  try {
+                    Thread.sleep(1000);
+                  }
+                  catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                  }
+                }, executor)
                 .thenCompose(v -> sendModbusRequestWithRetry(request, retriesLeft - 1));
           }
           return CompletableFuture.completedFuture(response);
@@ -604,29 +613,82 @@ public class ModbusTCPPeripheralCommunicationAdapter
 
   private ModbusResponse processResponse(ModbusResponse response) {
     if (response instanceof ReadHoldingRegistersResponse readResponse) {
-      ByteBuf registers = readResponse.getRegisters();
-      registers.retain();
-      return new ReadHoldingRegistersResponse(registers) {
-        @Override
-        public boolean release() {
-          boolean released = super.release();
-          if (released && registers.refCnt() > 0) {
-            return registers.release();
-          }
-          return released;
-        }
-
-        @Override
-        public boolean release(int decrement) {
-          boolean released = super.release(decrement);
-          if (released && registers.refCnt() > 0) {
-            return registers.release(decrement);
-          }
-          return released;
-        }
-      };
+      return handleReadHoldingRegistersResponse(readResponse);
+    }
+    else if (response instanceof WriteMultipleRegistersResponse writeResponse) {
+      return handleWriteMultipleRegistersResponse(writeResponse);
+    }
+    else if (response instanceof ReadInputRegistersResponse readInputResponse) {
+      return handleReadInputRegistersResponse(readInputResponse);
+    }
+    else if (response instanceof WriteSingleRegisterResponse writeSingleResponse) {
+      return handleWriteSingleRegisterResponse(writeSingleResponse);
     }
     return response;
+  }
+
+  private ReadHoldingRegistersResponse handleReadHoldingRegistersResponse(
+      ReadHoldingRegistersResponse readResponse
+  ) {
+    ByteBuf registers = readResponse.getRegisters();
+     registers.retain();
+    return new ReadHoldingRegistersResponse(registers) {
+      @Override
+      public boolean release() {
+        boolean released = super.release();
+        if (released && registers.refCnt() > 0) {
+          return registers.release();
+        }
+        return released;
+      }
+
+      @Override
+      public boolean release(int decrement) {
+        boolean released = super.release(decrement);
+        if (released && registers.refCnt() > 0) {
+          return registers.release(decrement);
+        }
+        return released;
+      }
+    };
+  }
+
+  private WriteMultipleRegistersResponse handleWriteMultipleRegistersResponse(
+      WriteMultipleRegistersResponse writeResponse
+  ) {
+    return writeResponse;
+  }
+
+  private ReadInputRegistersResponse handleReadInputRegistersResponse(
+      ReadInputRegistersResponse readInputResponse
+  ) {
+    ByteBuf registers = readInputResponse.getRegisters();
+    registers.retain();
+    return new ReadInputRegistersResponse(registers) {
+      @Override
+      public boolean release() {
+        boolean released = super.release();
+        if (released && registers.refCnt() > 0) {
+          return registers.release();
+        }
+        return released;
+      }
+
+      @Override
+      public boolean release(int decrement) {
+        boolean released = super.release(decrement);
+        if (released && registers.refCnt() > 0) {
+          return registers.release(decrement);
+        }
+        return released;
+      }
+    };
+  }
+
+  private WriteSingleRegisterResponse handleWriteSingleRegisterResponse(
+      WriteSingleRegisterResponse writeSingleResponse
+  ) {
+    return writeSingleResponse;
   }
 
   @Override

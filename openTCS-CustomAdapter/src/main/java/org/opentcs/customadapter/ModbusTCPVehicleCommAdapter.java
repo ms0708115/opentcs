@@ -1410,7 +1410,7 @@ public class ModbusTCPVehicleCommAdapter
       ReadHoldingRegistersResponse readResponse
   ) {
     ByteBuf registers = readResponse.getRegisters();
-//    registers.retain();
+    registers.retain();
     return new ReadHoldingRegistersResponse(registers) {
       @Override
       public boolean release() {
@@ -1442,7 +1442,7 @@ public class ModbusTCPVehicleCommAdapter
       ReadInputRegistersResponse readInputResponse
   ) {
     ByteBuf registers = readInputResponse.getRegisters();
-//    registers.retain();
+    registers.retain();
     return new ReadInputRegistersResponse(registers) {
       @Override
       public boolean release() {
