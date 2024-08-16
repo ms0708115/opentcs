@@ -266,7 +266,7 @@ public class ModbusTCPVehicleCommAdapter
   }
 
   private void handleHeartbeatValueMismatch(boolean currentValue, int value) {
-    LOG.warning(String.format("current read heart bit value: %d", value));
+//    LOG.warning(String.format("current read heart bit value: %d", value));
     if (value != (currentValue ? 1 : 0)) {
       writeSingleRegister(100, currentValue ? 1 : 0)
           .exceptionally(ex -> {
@@ -1025,9 +1025,18 @@ public class ModbusTCPVehicleCommAdapter
     return sendModbusRequest(request)
         .thenApply(response -> {
           if (response instanceof ReadInputRegistersResponse readResponse) {
-            ByteBuf responseBuffer = readResponse.getRegisters();
-            return responseBuffer.readUnsignedShort();
+            ByteBuf responseBuffer = null;
+            try {
+              responseBuffer = readResponse.getRegisters();
+              return responseBuffer.readUnsignedShort();
+            }
+            finally {
+              if (responseBuffer != null) {
+                responseBuffer.release();
+              }
+            }
           }
+
           throw new RuntimeException("Invalid response type");
         });
   }
@@ -1335,7 +1344,11 @@ public class ModbusTCPVehicleCommAdapter
 
   private ModbusResponse processResponse(ModbusResponse response) {
     if (response instanceof ReadHoldingRegistersResponse readResponse) {
-      return handleReadHoldingRegistersResponse(readResponse);
+      try {
+        return handleReadHoldingRegistersResponse(readResponse);
+      } finally {
+        readResponse.release();
+      }
     }
     else if (response instanceof WriteMultipleRegistersResponse writeResponse) {
       return handleWriteMultipleRegistersResponse(writeResponse);
