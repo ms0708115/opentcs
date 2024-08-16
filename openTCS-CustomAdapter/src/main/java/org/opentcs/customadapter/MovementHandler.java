@@ -54,7 +54,7 @@ public class MovementHandler {
     LOG.info(String.format("SIZE OF pendingCommands: %d", pendingCommands.size()));
     currentCommandIndex = 0;
 
-    monitoringTask = executor.scheduleAtFixedRate(() -> {
+    monitoringTask = adapter.getScheduledExecutorService().scheduleAtFixedRate(() -> {
       if (!running.get() || Thread.currentThread().isInterrupted()) {
         shutdownLatch.countDown();
         return;
@@ -73,7 +73,7 @@ public class MovementHandler {
     CompletableFuture<Integer> liftStatusFuture = adapter.readSingleRegister(106);
     CompletableFuture<Integer> loadStatusFuture = adapter.readSingleRegister(107);
 
-    CompletableFuture.allOf(vehicleStatusFuture, liftStatusFuture)
+    CompletableFuture.allOf(vehicleStatusFuture, liftStatusFuture, loadStatusFuture)
         .thenCompose(v -> CompletableFuture.supplyAsync(() -> {
           int vehicleStatus = vehicleStatusFuture.join();
           int liftStatus = liftStatusFuture.join();
@@ -128,7 +128,6 @@ public class MovementHandler {
 
         if (currentCommandIndex >= pendingCommands.size()) {
           LOG.info("All commands completed");
-//          stopMonitoring();
           adapter.getPositionUpdater().stopPositionUpdates()
               .thenRun(() -> LOG.info("Position updates stopped successfully"))
               .exceptionally(ex -> {
@@ -166,7 +165,7 @@ public class MovementHandler {
       return true;
     }
 
-    if (adapter.getProcessModel().getState() != Vehicle.State.FINISHED) {
+    if (adapter.getProcessModel().getState() != Vehicle.State.IDLE) {
       return false;
     }
 
@@ -185,6 +184,7 @@ public class MovementHandler {
     Vehicle.State vehicleState = switch (vehicleStatus) {
       case 0 -> Vehicle.State.IDLE;
       case 1 -> Vehicle.State.EXECUTING;
+      // TODO: make it FINISHED after close the movement monitor
       case 2 -> Vehicle.State.IDLE;
       default -> Vehicle.State.UNKNOWN;
     };
@@ -211,7 +211,7 @@ public class MovementHandler {
   public void stopMonitoring() {
     running.set(false);
     if (monitoringTask != null) {
-      monitoringTask.cancel(true);  // 嘗試中斷正在運行的任務
+      monitoringTask.cancel(true);
     }
     executor.execute(() -> {
       try {
