@@ -266,7 +266,7 @@ public class ModbusTCPVehicleCommAdapter
   }
 
   private void handleHeartbeatValueMismatch(boolean currentValue, int value) {
-    LOG.warning(String.format("current read heart bit value: %d", value));
+//    LOG.warning(String.format("current read heart bit value: %d", value));
     if (value != (currentValue ? 1 : 0)) {
       writeSingleRegister(100, currentValue ? 1 : 0)
           .exceptionally(ex -> {

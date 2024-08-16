@@ -18,16 +18,15 @@ import com.google.inject.assistedinject.Assisted;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.timeout.TimeoutException;
-import io.netty.util.ReferenceCountUtil;
 import jakarta.annotation.Nonnull;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -109,11 +108,7 @@ public class ModbusTCPPeripheralCommunicationAdapter
     this.configProvider = new PeripheralDeviceConfigurationProvider();
     this.host = configProvider.getConfiguration(location.getName()).host();
     this.port = configProvider.getConfiguration(location.getName()).port();
-    this.executor = Executors.newScheduledThreadPool(3, r -> {
-      Thread t = new Thread(r);
-      t.setDaemon(true);
-      return t;
-    });
+    this.executor = new ScheduledThreadPoolExecutor(3);
     this.location = location;
     this.isConnected = false;
     this.peripheralService = requireNonNull(peripheralService, "peripheralService");
@@ -224,6 +219,9 @@ public class ModbusTCPPeripheralCommunicationAdapter
               stopWriteHeartBeat();
             }
             stopPollingSensor();
+
+            setProcessModel(getProcessModel().withState(PeripheralInformation.State.IDLE));
+            sendProcessModelChangedEvent(PeripheralProcessModel.Attribute.STATE);
             executor.shutdown();
 
           })
@@ -537,16 +535,10 @@ public class ModbusTCPPeripheralCommunicationAdapter
 
     return sendModbusRequest(request)
         .thenAccept(response -> {
-          // LOG.info("Successfully wrote register at address " + address + " with value " + value);
         })
         .exceptionally(ex -> {
           LOG.severe("Failed to write register at address " + address + ": " + ex.getMessage());
           return null;
-        })
-        .whenComplete((v, ex) -> {
-          if (buffer.refCnt() > 0) {
-            buffer.release();
-          }
         });
   }
 
@@ -561,7 +553,7 @@ public class ModbusTCPPeripheralCommunicationAdapter
             for (int i = 0; i < quantity; i++) {
               int value = responseBuffer.readUnsignedShort();
               result.put(address + i, value);
-              LOG.info(String.format("READ ADDRESS %d GOT %d", address + i, value));
+//              LOG.info(String.format("READ ADDRESS %d GOT %d", address + i, value));
             }
 
             return result;
@@ -574,11 +566,7 @@ public class ModbusTCPPeripheralCommunicationAdapter
       ModbusRequest request
   ) {
     return sendModbusRequestWithRetry(request, 3)
-        .whenComplete((response, ex) -> {
-          if (response != null) {
-            ReferenceCountUtil.release(response);
-          }
-        })
+        .whenComplete((response, ex) -> {})
         .exceptionally(ex -> {
           LOG.severe("All retries failed for Modbus request: " + ex.getMessage());
           throw new CompletionException("Failed to send Modbus request after retries", ex);
@@ -614,6 +602,8 @@ public class ModbusTCPPeripheralCommunicationAdapter
                 .thenCompose(v -> sendModbusRequestWithRetry(request, retriesLeft - 1));
           }
           return CompletableFuture.completedFuture(response);
+
+
         });
   }
 
@@ -652,26 +642,8 @@ public class ModbusTCPPeripheralCommunicationAdapter
   private ReadHoldingRegistersResponse handleReadHoldingRegistersResponse(
       ReadHoldingRegistersResponse readResponse
   ) {
-    ByteBuf registers = readResponse.getRegisters();
-    registers.retain();
+    ByteBuf registers = readResponse.getRegisters().copy();
     return new ReadHoldingRegistersResponse(registers) {
-      @Override
-      public boolean release() {
-        boolean released = super.release();
-        if (released && registers.refCnt() > 0) {
-          return registers.release();
-        }
-        return released;
-      }
-
-      @Override
-      public boolean release(int decrement) {
-        boolean released = super.release(decrement);
-        if (released && registers.refCnt() > 0) {
-          return registers.release(decrement);
-        }
-        return released;
-      }
     };
   }
 
@@ -684,27 +656,7 @@ public class ModbusTCPPeripheralCommunicationAdapter
   private ReadInputRegistersResponse handleReadInputRegistersResponse(
       ReadInputRegistersResponse readInputResponse
   ) {
-    ByteBuf registers = readInputResponse.getRegisters();
-    registers.retain();
-    return new ReadInputRegistersResponse(registers) {
-      @Override
-      public boolean release() {
-        boolean released = super.release();
-        if (released && registers.refCnt() > 0) {
-          return registers.release();
-        }
-        return released;
-      }
-
-      @Override
-      public boolean release(int decrement) {
-        boolean released = super.release(decrement);
-        if (released && registers.refCnt() > 0) {
-          return registers.release(decrement);
-        }
-        return released;
-      }
-    };
+    return readInputResponse;
   }
 
   private WriteSingleRegisterResponse handleWriteSingleRegisterResponse(
