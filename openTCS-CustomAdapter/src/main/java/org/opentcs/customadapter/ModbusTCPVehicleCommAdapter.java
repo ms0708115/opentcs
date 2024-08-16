@@ -37,6 +37,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
@@ -129,9 +130,9 @@ public class ModbusTCPVehicleCommAdapter
   private PositionUpdater positionUpdater;
   private final PlantModelService plantModelService;
   private MovementHandler movementHandler;
-  private boolean shouldAbort = false;
   private final PeripheralService peripheralService;
-  private VehicleConfigurationProvider configProvider;
+  private final VehicleConfigurationProvider configProvider;
+  private final ScheduledExecutorService customScheduledExecutor;
 
   /**
    * A communication adapter for ModbusTCP-based vehicle communication.
@@ -170,6 +171,7 @@ public class ModbusTCPVehicleCommAdapter
     this.currentTransportOrder = null;
     this.positionMap = new HashMap<>();
     this.peripheralService = peripheralService;
+    this.customScheduledExecutor = new ScheduledThreadPoolExecutor(4);
   }
 
   @Override
@@ -227,8 +229,12 @@ public class ModbusTCPVehicleCommAdapter
     return this.positionUpdater;
   }
 
+  public ScheduledExecutorService getScheduledExecutorService() {
+    return this.customScheduledExecutor;
+  }
+
   private void startHeartbeat() {
-    heartBeatFuture = getExecutor().scheduleAtFixedRate(() -> {
+    heartBeatFuture = customScheduledExecutor.scheduleAtFixedRate(() -> {
       boolean currentValue = toggleHeartbeatAndRegisterWriting();
       addDelayAndReadRegister(currentValue)
           .thenAccept(value -> handleHeartbeatValueMismatch(currentValue, value))
@@ -474,15 +480,6 @@ public class ModbusTCPVehicleCommAdapter
     LOG.info("RECEIVED FINAL COMMAND, PROCESSING COMMANDS.");
   }
 
-//  private CompletableFuture<Boolean> checkVehicleStatus() {
-//    return readSingleRegister(114)
-//        .thenCombine(readSingleRegister(115), (value114, value115) -> {
-//          boolean isValid = isAutoModeEnabled(114, value114) && isAutoModeEnabled(115, value115);
-//          shouldAbort = !isValid;
-//          return isValid;
-//        });
-//  }
-
   private CompletableFuture<Boolean> checkVehicleStatus() {
     return readSingleRegister(114)
         .thenCombine(readSingleRegister(115), (value114, value115) -> {
@@ -491,11 +488,11 @@ public class ModbusTCPVehicleCommAdapter
         .thenCombine(readSingleRegister(105), (previousResult, value105) -> {
           return previousResult && isValidValue(105, value105);
         })
-        .thenCombine(readSingleRegister(106), (previousResult, value106) -> {
-          boolean isValid = previousResult && isValidValue(106, value106);
-          shouldAbort = !isValid;
-          return isValid;
-        });
+        .thenCombine(
+            readSingleRegister(106), (previousResult, value106) -> previousResult && isValidValue(
+                106, value106
+            )
+        );
   }
 
   private boolean isAutoModeEnabled(int register, int value) {
@@ -597,7 +594,6 @@ public class ModbusTCPVehicleCommAdapter
 
       currentTransportOrder = null;
       stopVehicle();
-      shouldAbort = false;
     }
     else {
       LOG.info("No current transport order to abort.");
@@ -658,8 +654,9 @@ public class ModbusTCPVehicleCommAdapter
     writeAllModbusCommands()
         .thenRun(() -> {
           movementHandler.startMonitoring(allMovementCommands);
+          LOG.info("Starting Monitoring.");
           positionUpdater.startPositionUpdates();
-          LOG.warning("Starting positioning.");
+          LOG.info("Starting Positioning.");
         })
         .exceptionally(ex -> {
           LOG.severe("Failed to write commands and start monitoring: " + ex.getMessage());
@@ -1610,7 +1607,7 @@ public class ModbusTCPVehicleCommAdapter
      */
     public void startPositionUpdates() {
       running.set(true);
-      positionFuture = executor.scheduleAtFixedRate(
+      positionFuture = customScheduledExecutor.scheduleAtFixedRate(
           () -> {
             if (!running.get()) {
               shutdownLatch.countDown();
