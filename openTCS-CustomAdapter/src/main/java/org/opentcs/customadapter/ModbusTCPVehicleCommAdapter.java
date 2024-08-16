@@ -825,7 +825,7 @@ public class ModbusTCPVehicleCommAdapter
         case ("STK_1") -> 2;
         case ("STK_2") -> 3;
         case ("OHB") -> 4;
-        case ("Sidefork") -> 5;
+        case ("Sidefork") -> 6;
         default -> 1;
       };
     }
@@ -971,8 +971,8 @@ public class ModbusTCPVehicleCommAdapter
 
   private static int getLiftCommand(String command) {
     return switch (command) {
-      case "Load" -> 2;
-      case "Unload" -> 1;
+      case "Load" -> 1;
+      case "Unload" -> 2;
       default -> 0;
     };
   }

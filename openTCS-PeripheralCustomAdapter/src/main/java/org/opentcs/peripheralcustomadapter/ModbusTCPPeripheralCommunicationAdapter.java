@@ -276,15 +276,15 @@ public class ModbusTCPPeripheralCommunicationAdapter
         int oldResult = loadingSideFork1Status.getAndSet(newResult);
         if (newResult != oldResult) {
           if (newResult == 2) {
-            peripheralService.updateObjectProperty(location, "LoadingStatus", "Load");
+            //peripheralService.updateObjectProperty(location, "LoadingStatus", "Load");
             LOG.info("Peripheral :" + location.getName() + "#1, Current Status :Load");
           }
           else if (newResult == 1) {
-            peripheralService.updateObjectProperty(location, "LoadingStatus", "Unload");
+            //peripheralService.updateObjectProperty(location, "LoadingStatus", "Unload");
             LOG.info("Peripheral :" + location.getName() + "#1, Current Status :Unload");
           }
           else {
-            peripheralService.updateObjectProperty(location, "LoadingStatus", "Unknown");
+            //peripheralService.updateObjectProperty(location, "LoadingStatus", "Unknown");
             LOG.info("Peripheral :" + location.getName() + "#1, Current Status :Unknown");
           }
         }
@@ -318,15 +318,15 @@ public class ModbusTCPPeripheralCommunicationAdapter
         int oldResult = loadingZIP1Status.getAndSet(newResult);
         if (newResult != oldResult) {
           if (newResult == 2) {
-            peripheralService.updateObjectProperty(location, "LoadingStatus", "Load");
+            //peripheralService.updateObjectProperty(location, "LoadingStatus", "Load");
             LOG.info("Peripheral :" + location.getName() + "#1, Current Status :Load");
           }
           else if (newResult == 1) {
-            peripheralService.updateObjectProperty(location, "LoadingStatus", "Unload");
+            //peripheralService.updateObjectProperty(location, "LoadingStatus", "Unload");
             LOG.info("Peripheral :" + location.getName() + "#1, Current Status :Unload");
           }
           else {
-            peripheralService.updateObjectProperty(location, "LoadingStatus", "Unknown");
+            //peripheralService.updateObjectProperty(location, "LoadingStatus", "Unknown");
             LOG.info("Peripheral :" + location.getName() + "#1, Current Status :Unknown");
           }
         }
@@ -367,7 +367,7 @@ public class ModbusTCPPeripheralCommunicationAdapter
           );
         }
         else if (String.CASE_INSENSITIVE_ORDER.compare(
-            location.getName(), "STK_IN"
+            location.getName(), "STK_2"
         )
             == 0) {
               readSingleRegister(301, 2).thenAccept(

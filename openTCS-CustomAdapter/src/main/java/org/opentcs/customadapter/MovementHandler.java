@@ -128,6 +128,7 @@ public class MovementHandler {
 
         if (currentCommandIndex >= pendingCommands.size()) {
           LOG.info("All commands completed");
+          adapter.getProcessModel().setState(Vehicle.State.IDLE);
 //          stopMonitoring();
           adapter.getPositionUpdater().stopPositionUpdates()
               .thenRun(() -> LOG.info("Position updates stopped successfully"))
@@ -135,7 +136,6 @@ public class MovementHandler {
                 LOG.severe("Error stopping position updates: " + ex.getMessage());
                 return null;
               });
-          adapter.getProcessModel().setState(Vehicle.State.IDLE);
         }
       }
       else {
@@ -166,7 +166,7 @@ public class MovementHandler {
       return true;
     }
 
-    if (adapter.getProcessModel().getState() != Vehicle.State.FINISHED) {
+    if (adapter.getProcessModel().getState() != Vehicle.State.IDLE) {
       return false;
     }
 

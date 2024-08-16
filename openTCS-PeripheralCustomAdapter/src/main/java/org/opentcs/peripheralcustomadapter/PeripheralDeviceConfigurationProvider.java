@@ -73,7 +73,7 @@ public class PeripheralDeviceConfigurationProvider {
         String specificPeripheral = "";
         for (int i = 0; i < 4; i++) {
           if (i == 0) {
-            specificPeripheral = "STK_IN";
+            specificPeripheral = "STK_2";
           }
           else if (i == 1) {
             specificPeripheral = "OHB";
