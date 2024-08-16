@@ -165,7 +165,7 @@ public class MovementHandler {
       return true;
     }
 
-    if (adapter.getProcessModel().getState() != Vehicle.State.FINISHED) {
+    if (adapter.getProcessModel().getState() != Vehicle.State.IDLE) {
       return false;
     }
 
@@ -184,7 +184,8 @@ public class MovementHandler {
     Vehicle.State vehicleState = switch (vehicleStatus) {
       case 0 -> Vehicle.State.IDLE;
       case 1 -> Vehicle.State.EXECUTING;
-      case 2 -> Vehicle.State.FINISHED;
+      // TODO: make it FINISHED after close the movement monitor
+      case 2 -> Vehicle.State.IDLE;
       default -> Vehicle.State.UNKNOWN;
     };
 
