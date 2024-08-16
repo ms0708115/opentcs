@@ -222,11 +222,11 @@ public class ModbusTCPPeripheralCommunicationAdapter
         int oldResult = loadingEFEMStatus.getAndSet(newResult);
         if (newResult != oldResult) {
           if (newResult == 2) {
-            peripheralService.updateObjectProperty(location, "LoadingStatus", "LOAD");
+            peripheralService.updateObjectProperty(location, "LoadingStatus", "Load");
             LOG.info("Peripheral :" + location.getName() + ", Current Status :Load");
           }
           else if (newResult == 1) {
-            peripheralService.updateObjectProperty(location, "LoadingStatus", "UNLOAD");
+            peripheralService.updateObjectProperty(location, "LoadingStatus", "Unload");
             LOG.info("Peripheral :" + location.getName() + ", Current Status :Unload");
           }
           else {
@@ -275,11 +275,11 @@ public class ModbusTCPPeripheralCommunicationAdapter
 
     if (newResult != oldResult) {
       if (newResult == 2) {
-        peripheralService.updateObjectProperty(location, "LoadingStatus", "LOAD");
+        peripheralService.updateObjectProperty(location, "LoadingStatus", "Load");
         LOG.info("Peripheral : " + location.getName() + ", Current Status :Load");
       }
       else if (newResult == 1) {
-        peripheralService.updateObjectProperty(location, "LoadingStatus", "UNLOAD");
+        peripheralService.updateObjectProperty(location, "LoadingStatus", "Unload");
         LOG.info("Peripheral : " + location.getName() + ", Current Status :Unload");
       }
       else {
@@ -296,11 +296,11 @@ public class ModbusTCPPeripheralCommunicationAdapter
         int oldResult = loadingSideFork1Status.getAndSet(newResult);
         if (newResult != oldResult) {
           if (newResult == 2) {
-            //peripheralService.updateObjectProperty(location, "LoadingStatus", "LOAD");
+            //peripheralService.updateObjectProperty(location, "LoadingStatus", "Load");
             LOG.info("Peripheral :" + location.getName() + "#1, Current Status :Load");
           }
           else if (newResult == 1) {
-            // peripheralService.updateObjectProperty(location, "LoadingStatus", "UNLOAD");
+            // peripheralService.updateObjectProperty(location, "LoadingStatus", "Unload");
             LOG.info("Peripheral :" + location.getName() + "#1, Current Status :Unload");
           }
           else {
@@ -314,11 +314,11 @@ public class ModbusTCPPeripheralCommunicationAdapter
         int oldResult = loadingSideFork2Status.getAndSet(newResult);
         if (newResult != oldResult) {
           if (newResult == 2) {
-            peripheralService.updateObjectProperty(location, "LoadingStatus", "LOAD");
+            peripheralService.updateObjectProperty(location, "LoadingStatus", "Load");
             LOG.info("Peripheral :" + location.getName() + "#2, Current Status :Load");
           }
           else if (newResult == 1) {
-            peripheralService.updateObjectProperty(location, "LoadingStatus", "UNLOAD");
+            peripheralService.updateObjectProperty(location, "LoadingStatus", "Unload");
             LOG.info("Peripheral :" + location.getName() + "#2, Current Status :Unload");
           }
           else {
@@ -338,11 +338,11 @@ public class ModbusTCPPeripheralCommunicationAdapter
         int oldResult = loadingZIP1Status.getAndSet(newResult);
         if (newResult != oldResult) {
           if (newResult == 2) {
-            //peripheralService.updateObjectProperty(location, "LoadingStatus", "LOAD");
+            //peripheralService.updateObjectProperty(location, "LoadingStatus", "Load");
             LOG.info("Peripheral :" + location.getName() + "#1, Current Status :Load");
           }
           else if (newResult == 1) {
-            // peripheralService.updateObjectProperty(location, "LoadingStatus", "UNLOAD");
+            // peripheralService.updateObjectProperty(location, "LoadingStatus", "Unload");
             LOG.info("Peripheral :" + location.getName() + "#1, Current Status :Unload");
           }
           else {
@@ -356,11 +356,11 @@ public class ModbusTCPPeripheralCommunicationAdapter
         int oldResult = loadingZIP2Status.getAndSet(newResult);
         if (newResult != oldResult) {
           if (newResult == 2) {
-            peripheralService.updateObjectProperty(location, "LoadingStatus", "LOAD");
+            peripheralService.updateObjectProperty(location, "LoadingStatus", "Load");
             LOG.info("Peripheral :" + location.getName() + "#2, Current Status :Load");
           }
           else if (newResult == 1) {
-            peripheralService.updateObjectProperty(location, "LoadingStatus", "UNLOAD");
+            peripheralService.updateObjectProperty(location, "LoadingStatus", "Unload");
             LOG.info("Peripheral :" + location.getName() + "#2, Current Status :Unload");
           }
           else {
