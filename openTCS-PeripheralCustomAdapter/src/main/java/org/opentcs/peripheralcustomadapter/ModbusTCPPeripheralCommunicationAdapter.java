@@ -242,19 +242,19 @@ public class ModbusTCPPeripheralCommunicationAdapter
         int newResult = value.get(301);
         int oldResult = loadingEFEMStatus.getAndSet(newResult);
         if (newResult != oldResult) {
-//          if (newResult == 2) {
-          peripheralService.updateObjectProperty(location, "LoadingStatus", "Load");
-          LOG.info("Peripheral :" + location.getName() + ", Current Status :Load");
+          if (newResult == 2) {
+            peripheralService.updateObjectProperty(location, "LoadingStatus", "Load");
+            LOG.info("Peripheral :" + location.getName() + ", Current Status :Load");
+          }
+          else if (newResult == 1) {
+            peripheralService.updateObjectProperty(location, "LoadingStatus", "Unload");
+            LOG.info("Peripheral :" + location.getName() + ", Current Status :Unload");
+          }
+          else {
+            peripheralService.updateObjectProperty(location, "LoadingStatus", "UNKNOWN");
+            LOG.info("Peripheral :" + location.getName() + ", Current Status :Unknown");
+          }
         }
-        else if (newResult == 1) {
-          peripheralService.updateObjectProperty(location, "LoadingStatus", "Unload");
-          LOG.info("Peripheral :" + location.getName() + ", Current Status :Unload");
-        }
-        else {
-          peripheralService.updateObjectProperty(location, "LoadingStatus", "UNKNOWN");
-          LOG.info("Peripheral :" + location.getName() + ", Current Status :Unknown");
-        }
-//        }
       }
       case 1 -> {
         eFEMQuantity.set(value.get(301 + index));
