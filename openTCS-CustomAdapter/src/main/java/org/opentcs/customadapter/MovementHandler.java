@@ -135,6 +135,8 @@ public class MovementHandler {
                 return null;
               });
           adapter.getProcessModel().setState(Vehicle.State.IDLE);
+          LOG.info("TransportOrder Finished, stop movement monitoring");
+          stopMonitoring();
         }
       }
       else {
@@ -152,7 +154,7 @@ public class MovementHandler {
     else {
       LOG.warning(
           String.format(
-              "currentCommandIndex: %d < pendingCommands.size : %d", currentCommandIndex,
+              "currentCommandIndex: %d = pendingCommands.size : %d", currentCommandIndex,
               pendingCommands.size()
           )
       );
@@ -220,7 +222,6 @@ public class MovementHandler {
       catch (InterruptedException e) {
         Thread.currentThread().interrupt();
       }
-      // 清理操作
     });
 
     pendingCommands.clear();
