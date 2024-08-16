@@ -54,7 +54,7 @@ public class MovementHandler {
     LOG.info(String.format("SIZE OF pendingCommands: %d", pendingCommands.size()));
     currentCommandIndex = 0;
 
-    monitoringTask = executor.scheduleAtFixedRate(() -> {
+    monitoringTask = adapter.getScheduledExecutorService().scheduleAtFixedRate(() -> {
       if (!running.get() || Thread.currentThread().isInterrupted()) {
         shutdownLatch.countDown();
         return;
@@ -184,7 +184,7 @@ public class MovementHandler {
     Vehicle.State vehicleState = switch (vehicleStatus) {
       case 0 -> Vehicle.State.IDLE;
       case 1 -> Vehicle.State.EXECUTING;
-      case 2 -> Vehicle.State.FINISHED ;
+      case 2 -> Vehicle.State.FINISHED;
       default -> Vehicle.State.UNKNOWN;
     };
 
