@@ -18,7 +18,6 @@ import com.google.inject.assistedinject.Assisted;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.timeout.TimeoutException;
-import io.netty.util.ReferenceCounted;
 import jakarta.annotation.Nonnull;
 import jakarta.annotation.Nullable;
 import java.beans.PropertyChangeEvent;
@@ -197,7 +196,7 @@ public class ModbusTCPVehicleCommAdapter
     );
     getProcessModel().setMaxFwdVelocity(vehicle.getMaxVelocity());
     initializePositionMap();
-    this.positionUpdater = new PositionUpdater(getProcessModel(), getExecutor());
+    this.positionUpdater = new PositionUpdater(getExecutor());
     this.movementHandler = new MovementHandler(getExecutor(), this);
 
     initialized = true;
@@ -482,12 +481,15 @@ public class ModbusTCPVehicleCommAdapter
 
   private CompletableFuture<Boolean> checkVehicleStatus() {
     return readSingleRegister(114)
-        .thenCombine(readSingleRegister(115), (value114, value115) -> {
-          return isAutoModeEnabled(114, value114) && isAutoModeEnabled(115, value115);
-        })
-        .thenCombine(readSingleRegister(105), (previousResult, value105) -> {
-          return previousResult && isValidValue(105, value105);
-        })
+        .thenCombine(
+            readSingleRegister(115), (value114, value115) -> isAutoModeEnabled(114, value114)
+                && isAutoModeEnabled(115, value115)
+        )
+        .thenCombine(
+            readSingleRegister(105), (previousResult, value105) -> previousResult && isValidValue(
+                105, value105
+            )
+        )
         .thenCombine(
             readSingleRegister(106), (previousResult, value106) -> previousResult && isValidValue(
                 106, value106
@@ -795,7 +797,7 @@ public class ModbusTCPVehicleCommAdapter
 
   private int getSpeedLevel(MovementCommand cmd) {
     double maxSpeed = 0;
-    int speedLevel = 0;
+    int speedLevel;
     if (cmd.getStep().getPath() != null) {
       maxSpeed = getMaxAllowedSpeed(cmd.getStep().getPath());
       LOG.info(String.format("GOT MAX SPEED: %f", maxSpeed));
@@ -831,7 +833,7 @@ public class ModbusTCPVehicleCommAdapter
 
   @SuppressWarnings("checkstyle:TodoComment")
   private CMD1 createCMD1(MovementCommand cmd) {
-    int liftCmd = 0;
+    int liftCmd;
     int speedLevel = getSpeedLevel(cmd);
     int obstacleSensor = 1;
     String command = cmd.getOperation();
@@ -881,12 +883,6 @@ public class ModbusTCPVehicleCommAdapter
     int motionCommand;
     String switchOperation = "";
     Map<String, String> pathOperation = null;
-//    int station = 0;
-//
-//    if (!cmd.getFinalOperation().equals("NOP")) {
-//      LOG.info("HAVE SET STATION CODE TO ZERO");
-//      station = getStation(cmd);
-//    }
     if (cmd.getStep().getPath() != null) {
       pathOperation = cmd.getStep().getPath().getProperties();
       LOG.warning(String.format("GOT SWITCH FROM MAP: %s", pathOperation.get("switch")));
@@ -929,7 +925,7 @@ public class ModbusTCPVehicleCommAdapter
 
   private static String getStateString(Location location) {
     PeripheralInformation.State state = location.getPeripheralInformation().getState();
-    String stateString = "";
+    String stateString;
     switch (state) {
       case NO_PERIPHERAL -> {
         stateString = "NO_PERIPHERAL";
@@ -1028,15 +1024,7 @@ public class ModbusTCPVehicleCommAdapter
         .thenApply(response -> {
           if (response instanceof ReadInputRegistersResponse readResponse) {
             ByteBuf responseBuffer = readResponse.getRegisters();
-            try {
-              return responseBuffer.readUnsignedShort();
-            }
-            finally {
-//              if (responseBuffer.refCnt() > 0) {
-//                LOG.severe(String.format("1045, buffer.refCnt(): %d", responseBuffer.refCnt()));
-//                responseBuffer.release();
-//              }
-            }
+            return responseBuffer.readUnsignedShort();
           }
           throw new RuntimeException("Invalid response type");
         });
@@ -1050,15 +1038,6 @@ public class ModbusTCPVehicleCommAdapter
 
     return CompletableFuture.allOf(futuresArray)
         .thenRun(() -> {
-//          boolean allVerified = readFutures.stream().allMatch(future -> {
-//            try {
-//              return future.get();
-//            }
-//            catch (InterruptedException | ExecutionException e) {
-//              LOG.severe("Error while verifying command: " + e.getMessage());
-//              return false;
-//            }
-//          });
           boolean allVerified = readFutures.stream()
               .allMatch(CompletableFuture::join);
           if (!allVerified) {
@@ -1077,28 +1056,20 @@ public class ModbusTCPVehicleCommAdapter
         .thenApply(response -> {
           if (response instanceof ReadHoldingRegistersResponse readResponse) {
             ByteBuf registers = readResponse.getRegisters();
-            try {
-              if (registers.readableBytes() >= 2) {
-                int value = registers.readUnsignedShort();
-                boolean matches = (value == command.value());
-                LOG.info(
-                    String.format(
-                        "Read and verified command at address %d: expected %d, got %d",
-                        command.address(), command.value(), value
-                    )
-                );
-                return matches;
-              }
-              else {
-                LOG.warning("Insufficient data returned for address " + command.address());
-                return false;
-              }
+            if (registers.readableBytes() >= 2) {
+              int value = registers.readUnsignedShort();
+              boolean matches = (value == command.value());
+              LOG.info(
+                  String.format(
+                      "Read and verified command at address %d: expected %d, got %d",
+                      command.address(), command.value(), value
+                  )
+              );
+              return matches;
             }
-            finally {
-//              if (registers.refCnt() > 0) {
-//                LOG.severe(String.format("1108, buffer.refCnt(): %d", registers.refCnt()));
-//                registers.release();
-//              }
+            else {
+              LOG.warning("Insufficient data returned for address " + command.address());
+              return false;
             }
           }
           else {
@@ -1189,64 +1160,52 @@ public class ModbusTCPVehicleCommAdapter
   ) {
     ByteBuf values = Unpooled.buffer();
     int registerCount = 0;
-    try {
-      for (ModbusCommand command : batch) {
-        if ("Position".equalsIgnoreCase(commandType)) {
-          int lowWord = (command.value() >> 16) & 0xFFFF;
-          int highWord = command.value() & 0xFFFF;
-          values.writeShort(highWord);
-          values.writeShort(lowWord);
+    for (ModbusCommand command : batch) {
+      if ("Position".equalsIgnoreCase(commandType)) {
+        int lowWord = (command.value() >> 16) & 0xFFFF;
+        int highWord = command.value() & 0xFFFF;
+        values.writeShort(highWord);
+        values.writeShort(lowWord);
 
-          registerCount += 2;
-        }
-        else {
-          values.writeShort(command.value());
-          registerCount += 1;
-        }
-        LOG.info("Writing " + commandType + " command: " + command.toLogString());
+        registerCount += 2;
       }
-
-      WriteMultipleRegistersRequest request = new WriteMultipleRegistersRequest(
-          startAddress,
-          registerCount,
-          values
-      );
-
-      int finalRegisterCount = registerCount;
-      return sendModbusRequest(request)
-          .thenAccept(response -> {
-            if (response instanceof WriteMultipleRegistersResponse) {
-              LOG.info(
-                  "Successfully wrote " + batch.size() + " " + commandType
-                      + " commands (total " + finalRegisterCount
-                      + " registers) starting at address "
-                      + startAddress
-              );
-            }
-            else {
-              throw new CompletionException(
-                  "Unexpected response type: " + response.getClass().getSimpleName(), null
-              );
-            }
-          })
-          .exceptionally(ex -> {
-            LOG.severe("Failed to write " + commandType + " registers: " + ex.getMessage());
-            throw new CompletionException(ex);
-          })
-          .whenComplete((v, ex) -> {
-//            if (values.refCnt() > 0) {
-//              LOG.severe(String.format("1247, buffer.refCnt(): %d", values.refCnt()));
-//              values.release();
-//            }
-          });
+      else {
+        values.writeShort(command.value());
+        registerCount += 1;
+      }
+      LOG.info("Writing " + commandType + " command: " + command.toLogString());
     }
-    catch (Exception e) {
-//      if (values.refCnt() > 0) {
-//        LOG.severe(String.format("1254, buffer.refCnt(): %d", values.refCnt()));
-//        values.release();
-//      }
-      throw e;
-    }
+
+    WriteMultipleRegistersRequest request = new WriteMultipleRegistersRequest(
+        startAddress,
+        registerCount,
+        values
+    );
+
+    int finalRegisterCount = registerCount;
+    return sendModbusRequest(request)
+        .thenAccept(response -> {
+          if (response instanceof WriteMultipleRegistersResponse) {
+            LOG.info(
+                "Successfully wrote " + batch.size() + " " + commandType
+                    + " commands (total " + finalRegisterCount
+                    + " registers) starting at address "
+                    + startAddress
+            );
+          }
+          else {
+            throw new CompletionException(
+                "Unexpected response type: " + response.getClass().getSimpleName(), null
+            );
+          }
+        })
+        .exceptionally(ex -> {
+          LOG.severe("Failed to write " + commandType + " registers: " + ex.getMessage());
+          throw new CompletionException(ex);
+        })
+        .whenComplete((v, ex) -> {
+
+        });
 
 
   }
@@ -1274,8 +1233,6 @@ public class ModbusTCPVehicleCommAdapter
             getProcessModel().setCommAdapterConnected(true);
             startHeartbeat();
             LOG.warning("Starting sending heart bit.");
-//            positionUpdater.startPositionUpdates();
-//            LOG.warning("Starting positioning.");
           })
           .exceptionally(ex -> {
             LOG.log(Level.SEVERE, "Failed to connect to Modbus TCP server", ex);
@@ -1317,11 +1274,7 @@ public class ModbusTCPVehicleCommAdapter
 
   private CompletableFuture<ModbusResponse> sendModbusRequest(ModbusRequest request) {
     return sendModbusRequestWithRetry(request, 3)
-        .whenComplete((response, ex) -> {
-//          if (response != null) {
-//            ReferenceCountUtil.release(response);
-//          }
-        })
+        .whenComplete((response, ex) -> {})
         .exceptionally(ex -> {
           LOG.severe("All retries failed for Modbus request: " + ex.getMessage());
           throw new CompletionException("Failed to send Modbus request after retries", ex);
@@ -1344,45 +1297,22 @@ public class ModbusTCPVehicleCommAdapter
           LOG.severe("Failed to send Modbus request: " + ex.getMessage());
           return null;
         }).thenCompose(response -> {
-          try {
-            boolean shouldRetry = response == null && retriesLeft > 0;
-            if (shouldRetry) {
-              return CompletableFuture.runAsync(() -> {
-                try {
-                  Thread.sleep(1000);
-                }
-                catch (InterruptedException e) {
-                  Thread.currentThread().interrupt();
-                }
-              }, getExecutor())
-                  .thenCompose(v -> sendModbusRequestWithRetry(request, retriesLeft - 1));
-            }
-            return CompletableFuture.completedFuture(response);
+          boolean shouldRetry = response == null && retriesLeft > 0;
+          if (shouldRetry) {
+            return CompletableFuture.runAsync(() -> {
+              try {
+                Thread.sleep(1000);
+              }
+              catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+              }
+            }, getExecutor())
+                .thenCompose(v -> sendModbusRequestWithRetry(request, retriesLeft - 1));
           }
-          finally {
-//            safeReleaseResponse(response);
-          }
+          return CompletableFuture.completedFuture(response);
+
 
         });
-  }
-
-  private void safeReleaseResponse(ModbusResponse response) {
-    if (response != null && response instanceof ReferenceCounted) {
-      ReferenceCounted referenceCounted = (ReferenceCounted) response;
-      while (referenceCounted.refCnt() > 0) {
-        try {
-          boolean released = referenceCounted.release();
-          if (!released) {
-            LOG.warning("Failed to release Modbus response, but no exception thrown.");
-            break;
-          }
-        }
-        catch (Exception e) {
-          LOG.warning("Exception while releasing Modbus response: " + e.getMessage());
-          break;
-        }
-      }
-    }
   }
 
   private ModbusResponse sendRequest(ModbusRequest request) {
@@ -1422,14 +1352,6 @@ public class ModbusTCPVehicleCommAdapter
   ) {
     ByteBuf registers = readResponse.getRegisters().copy();
     return new ReadHoldingRegistersResponse(registers) {
-//      @Override
-//      public boolean release() {
-//        boolean released = super.release();
-//        if (released && registers.refCnt() > 0) {
-//          return registers.release();
-//        }
-//        return released;
-//      }
     };
   }
 
@@ -1569,7 +1491,7 @@ public class ModbusTCPVehicleCommAdapter
    */
   private enum LoadState {
     EMPTY,
-    FULL;
+    FULL
   }
 
   public class PositionUpdater {
@@ -1591,10 +1513,9 @@ public class ModbusTCPVehicleCommAdapter
      * Constructor for the PositionUpdater class. Initializes the PositionUpdater object
      * with the provided processModel and executor objects.
      *
-     * @param processModel The VehicleProcessModel object associated with the vehicle.
      * @param executor The ScheduledExecutorService used to schedule position updates.
      */
-    public PositionUpdater(VehicleProcessModel processModel, ScheduledExecutorService executor) {
+    public PositionUpdater(ScheduledExecutorService executor) {
       this.executor = executor;
       this.lastKnownPosition = null;
     }
