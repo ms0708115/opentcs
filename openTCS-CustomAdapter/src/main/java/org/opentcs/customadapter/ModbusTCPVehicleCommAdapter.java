@@ -18,6 +18,7 @@ import com.google.inject.assistedinject.Assisted;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.timeout.TimeoutException;
+import io.netty.util.ResourceLeakDetector;
 import jakarta.annotation.Nonnull;
 import jakarta.annotation.Nullable;
 import java.beans.PropertyChangeEvent;
@@ -171,6 +172,7 @@ public class ModbusTCPVehicleCommAdapter
     this.positionMap = new HashMap<>();
     this.peripheralService = peripheralService;
     this.customScheduledExecutor = new ScheduledThreadPoolExecutor(4);
+    ResourceLeakDetector.setLevel(ResourceLeakDetector.Level.ADVANCED);
   }
 
   @Override
@@ -1364,15 +1366,7 @@ public class ModbusTCPVehicleCommAdapter
   private ReadInputRegistersResponse handleReadInputRegistersResponse(
       ReadInputRegistersResponse readInputResponse
   ) {
-    ByteBuf registers = readInputResponse.getRegisters().copy();
-    return new ReadInputRegistersResponse(registers) {
-      @Override
-      public boolean release() {
-        boolean superReleased = super.release();
-        boolean registersReleased = registers.release();
-        return superReleased && registersReleased;
-      }
-    };
+    return readInputResponse;
   }
 
   private WriteSingleRegisterResponse handleWriteSingleRegisterResponse(
