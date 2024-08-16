@@ -5,11 +5,9 @@ import com.google.inject.Provider;
 import com.google.inject.Singleton;
 import com.google.inject.assistedinject.Assisted;
 import java.util.Map;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.logging.Logger;
 import org.opentcs.components.kernel.services.PeripheralService;
 import org.opentcs.customizations.ApplicationEventBus;
-import org.opentcs.customizations.kernel.KernelExecutor;
 import org.opentcs.data.model.Location;
 import org.opentcs.data.model.TCSResourceReference;
 import org.opentcs.util.event.EventHandler;
@@ -24,21 +22,17 @@ public class PeripheralCommunicationStrategy
 
   private final Map<String, Provider<StrategyCreator>> strategyProviders;
   private final PeripheralDeviceConfigurationProvider configProvider;
-  private final ScheduledExecutorService executor;
   private final EventHandler eventHandler;
   private final PeripheralService peripheralService;
 
   @Inject
   PeripheralCommunicationStrategy(
       Map<String, Provider<StrategyCreator>> strategyProviders,
-      @KernelExecutor
-      ScheduledExecutorService executor,
       @ApplicationEventBus
       EventHandler eventHandler,
       PeripheralService peripheralService
   ) {
     this.strategyProviders = strategyProviders;
-    this.executor = executor;
     this.configProvider = new PeripheralDeviceConfigurationProvider();
     this.eventHandler = eventHandler;
     this.peripheralService = peripheralService;
@@ -71,6 +65,6 @@ public class PeripheralCommunicationStrategy
     }
 
     StrategyCreator creator = creatorProvider.get();
-    return creator.createAdapter(location, eventHandler, executor, peripheralService);
+    return creator.createAdapter(location, eventHandler, peripheralService);
   }
 }

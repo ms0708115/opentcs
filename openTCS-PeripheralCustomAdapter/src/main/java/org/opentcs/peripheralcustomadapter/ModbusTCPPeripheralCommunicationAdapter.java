@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -35,7 +36,6 @@ import java.util.logging.Logger;
 import java.util.stream.IntStream;
 import org.opentcs.components.kernel.services.PeripheralService;
 import org.opentcs.customizations.ApplicationEventBus;
-import org.opentcs.customizations.kernel.KernelExecutor;
 import org.opentcs.data.model.Location;
 import org.opentcs.data.model.PeripheralInformation;
 import org.opentcs.data.model.TCSResourceReference;
@@ -95,7 +95,6 @@ public class ModbusTCPPeripheralCommunicationAdapter
    *
    * @param location The reference to the location this adapter is attached to.
    * @param eventHandler The handler used to send events to.
-   * @param kernelExecutor The kernel's executor.
    * @param peripheralService Peripheral Service.
    */
   @Inject
@@ -104,15 +103,17 @@ public class ModbusTCPPeripheralCommunicationAdapter
       TCSResourceReference<Location> location,
       @ApplicationEventBus
       EventHandler eventHandler,
-      @KernelExecutor
-      ScheduledExecutorService kernelExecutor,
       PeripheralService peripheralService
   ) {
-    super(location, eventHandler, kernelExecutor, peripheralService);
+    super(location, eventHandler, peripheralService);
     this.configProvider = new PeripheralDeviceConfigurationProvider();
     this.host = configProvider.getConfiguration(location.getName()).host();
     this.port = configProvider.getConfiguration(location.getName()).port();
-    this.executor = kernelExecutor;
+    this.executor = Executors.newScheduledThreadPool(3, r -> {
+      Thread t = new Thread(r);
+      t.setDaemon(true);
+      return t;
+    });
     this.location = location;
     this.isConnected = false;
     this.peripheralService = requireNonNull(peripheralService, "peripheralService");
@@ -146,7 +147,25 @@ public class ModbusTCPPeripheralCommunicationAdapter
       stopWriteHeartBeat();
     }
     stopPollingSensor();
+    shutdownExecutor();
     initialized = false;// Stop the heartbeat mechanism
+  }
+
+  private void shutdownExecutor() {
+    LOG.info("Shutting down executor service");
+    executor.shutdown();
+    try {
+      if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+        executor.shutdownNow();
+        if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+          LOG.severe("Executor did not terminate");
+        }
+      }
+    }
+    catch (InterruptedException ie) {
+      executor.shutdownNow();
+      Thread.currentThread().interrupt();
+    }
   }
 
   @Override
@@ -205,6 +224,8 @@ public class ModbusTCPPeripheralCommunicationAdapter
               stopWriteHeartBeat();
             }
             stopPollingSensor();
+            executor.shutdown();
+
           })
           .exceptionally(ex -> {
             LOG.log(Level.SEVERE, "Failed to disconnect from Modbus TCP server", ex);
@@ -221,26 +242,25 @@ public class ModbusTCPPeripheralCommunicationAdapter
         int newResult = value.get(301);
         int oldResult = loadingEFEMStatus.getAndSet(newResult);
         if (newResult != oldResult) {
-          if (newResult == 2) {
-            peripheralService.updateObjectProperty(location, "LoadingStatus", "Load");
-            LOG.info("Peripheral :" + location.getName() + ", Current Status :Load");
-          }
-          else if (newResult == 1) {
-            peripheralService.updateObjectProperty(location, "LoadingStatus", "Unload");
-            LOG.info("Peripheral :" + location.getName() + ", Current Status :Unload");
-          }
-          else {
-            peripheralService.updateObjectProperty(location, "LoadingStatus", "Unknown");
-            LOG.info("Peripheral :" + location.getName() + ", Current Status :Unknown");
-          }
+//          if (newResult == 2) {
+          peripheralService.updateObjectProperty(location, "LoadingStatus", "Load");
+          LOG.info("Peripheral :" + location.getName() + ", Current Status :Load");
         }
+        else if (newResult == 1) {
+          peripheralService.updateObjectProperty(location, "LoadingStatus", "Unload");
+          LOG.info("Peripheral :" + location.getName() + ", Current Status :Unload");
+        }
+        else {
+          peripheralService.updateObjectProperty(location, "LoadingStatus", "UNKNOWN");
+          LOG.info("Peripheral :" + location.getName() + ", Current Status :Unknown");
+        }
+//        }
       }
       case 1 -> {
         eFEMQuantity.set(value.get(301 + index));
         peripheralService.updateObjectProperty(
-            location, "Magazine_Quantity ", String.valueOf(eFEMQuantity.get())
+            location, "Magazine_Quantity", String.valueOf(eFEMQuantity.get())
         );
-        //LOG.info("Peripheral :" + location.getName() + ", Quantity :" + eFEMQuantity.get());
       }
       case 2 -> {
 
@@ -261,7 +281,9 @@ public class ModbusTCPPeripheralCommunicationAdapter
           setProcessModel(getProcessModel().withState(PeripheralInformation.State.ERROR));
         }
         else {
-          setProcessModel(getProcessModel().withState(PeripheralInformation.State.UNKNOWN));
+          setProcessModel(getProcessModel().withState(PeripheralInformation.State.IDLE));
+          //If the state is Simulate, the peripheral state can not set Unknown.
+          //setProcessModel(getProcessModel().withState(PeripheralInformation.State.UNKNOWN));
         }
         sendProcessModelChangedEvent(PeripheralProcessModel.Attribute.STATE);
       }
