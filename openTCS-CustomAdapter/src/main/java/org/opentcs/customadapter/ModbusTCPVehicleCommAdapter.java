@@ -18,7 +18,7 @@ import com.google.inject.assistedinject.Assisted;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.timeout.TimeoutException;
-import io.netty.util.ReferenceCountUtil;
+import io.netty.util.ReferenceCounted;
 import jakarta.annotation.Nonnull;
 import jakarta.annotation.Nullable;
 import java.beans.PropertyChangeEvent;
@@ -110,7 +110,7 @@ public class ModbusTCPVehicleCommAdapter
   /**
    * The initial position of OHT.
    */
-  private final String initialPose;
+  private String initialPose;
   /**
    * Indicates whether the vehicle is currently connected.
    */
@@ -131,7 +131,7 @@ public class ModbusTCPVehicleCommAdapter
   private MovementHandler movementHandler;
   private boolean shouldAbort = false;
   private final PeripheralService peripheralService;
-  private final VehicleConfigurationProvider configProvider;
+  private VehicleConfigurationProvider configProvider;
 
   /**
    * A communication adapter for ModbusTCP-based vehicle communication.
@@ -284,12 +284,9 @@ public class ModbusTCPVehicleCommAdapter
       PlantModel plantModel = plantModelService.getPlantModel();
       for (Point point : plantModel.getPoints()) {
         String positionName = point.getName();
-        LOG.info(String.format("positionName: %s", positionName));
         Long precisePosition = point.getPose().getPosition().getX();
-        LOG.info(String.format("precisePosition: %d", precisePosition));
         positionMap.put(precisePosition, positionName);
       }
-
       LOG.info("Position map initialized with " + positionMap.size() + " entries.");
     }
     catch (KernelRuntimeException e) {
@@ -370,6 +367,10 @@ public class ModbusTCPVehicleCommAdapter
       return;
     }
     super.enable();
+    configProvider.loadConfigurations();
+    initialPose = configProvider.getConfiguration(vehicle.getName()).initialPose();
+    (getExecutor()).submit(() -> getProcessModel().setPosition(initialPose));
+    getProcessModel().setState(Vehicle.State.IDLE);
   }
 
   /**
@@ -396,6 +397,7 @@ public class ModbusTCPVehicleCommAdapter
           return null;
         });
     stopHeartBeat();
+    movementHandler.stopMonitoring();
     super.disable();
   }
 
@@ -821,7 +823,7 @@ public class ModbusTCPVehicleCommAdapter
         case ("STK_1") -> 2;
         case ("STK_2") -> 3;
         case ("OHB") -> 4;
-        case ("Sidefork") -> 5;
+        case ("Sidefork") -> 6;
         default -> 1;
       };
     }
@@ -967,8 +969,8 @@ public class ModbusTCPVehicleCommAdapter
 
   private static int getLiftCommand(String command) {
     return switch (command) {
-      case "Load" -> 2;
-      case "Unload" -> 1;
+      case "Load" -> 1;
+      case "Unload" -> 2;
       default -> 0;
     };
   }
@@ -1020,11 +1022,6 @@ public class ModbusTCPVehicleCommAdapter
         .exceptionally(ex -> {
           LOG.severe("Failed to write register at address " + address + ": " + ex.getMessage());
           return null;
-        })
-        .whenComplete((v, ex) -> {
-          if (buffer.refCnt() > 0) {
-            buffer.release();
-          }
         });
   }
 
@@ -1034,34 +1031,17 @@ public class ModbusTCPVehicleCommAdapter
         .thenApply(response -> {
           if (response instanceof ReadInputRegistersResponse readResponse) {
             ByteBuf responseBuffer = readResponse.getRegisters();
-//            int value = responseBuffer.readUnsignedShort();
-//            LOG.info(String.format("READ ADDRESS %d GOT %d", address, value));
-//            return value;
-            return responseBuffer.readUnsignedShort();
-          }
-          throw new RuntimeException("Invalid response type");
-        });
-  }
-
-  private CompletableFuture<Long> readDWordRegister(int startAddress) {
-    return sendModbusRequest(new ReadHoldingRegistersRequest(startAddress, 2))
-        .thenApply(response -> {
-          if (response instanceof ReadHoldingRegistersResponse readResponse) {
-            ByteBuf registers = readResponse.getRegisters();
             try {
-              // Read two 16-bit registers and combine into a 32-bit integer
-              int lowWord = registers.readUnsignedShort();
-              int highWord = registers.readUnsignedShort();
-              // Use little endian combination
-              return (long) (highWord << 16 | lowWord);
+              return responseBuffer.readUnsignedShort();
             }
             finally {
-              registers.release();
+//              if (responseBuffer.refCnt() > 0) {
+//                LOG.severe(String.format("1045, buffer.refCnt(): %d", responseBuffer.refCnt()));
+//                responseBuffer.release();
+//              }
             }
           }
-          else {
-            throw new IllegalArgumentException("Unexpected response type");
-          }
+          throw new RuntimeException("Invalid response type");
         });
   }
 
@@ -1100,20 +1080,28 @@ public class ModbusTCPVehicleCommAdapter
         .thenApply(response -> {
           if (response instanceof ReadHoldingRegistersResponse readResponse) {
             ByteBuf registers = readResponse.getRegisters();
-            if (registers.readableBytes() >= 2) {
-              int value = registers.readUnsignedShort();
-              boolean matches = (value == command.value());
-              LOG.info(
-                  String.format(
-                      "Read and verified command at address %d: expected %d, got %d",
-                      command.address(), command.value(), value
-                  )
-              );
-              return matches;
+            try {
+              if (registers.readableBytes() >= 2) {
+                int value = registers.readUnsignedShort();
+                boolean matches = (value == command.value());
+                LOG.info(
+                    String.format(
+                        "Read and verified command at address %d: expected %d, got %d",
+                        command.address(), command.value(), value
+                    )
+                );
+                return matches;
+              }
+              else {
+                LOG.warning("Insufficient data returned for address " + command.address());
+                return false;
+              }
             }
-            else {
-              LOG.warning("Insufficient data returned for address " + command.address());
-              return false;
+            finally {
+//              if (registers.refCnt() > 0) {
+//                LOG.severe(String.format("1108, buffer.refCnt(): %d", registers.refCnt()));
+//                registers.release();
+//              }
             }
           }
           else {
@@ -1249,11 +1237,17 @@ public class ModbusTCPVehicleCommAdapter
             throw new CompletionException(ex);
           })
           .whenComplete((v, ex) -> {
-            values.release();
+//            if (values.refCnt() > 0) {
+//              LOG.severe(String.format("1247, buffer.refCnt(): %d", values.refCnt()));
+//              values.release();
+//            }
           });
     }
     catch (Exception e) {
-      values.release();
+//      if (values.refCnt() > 0) {
+//        LOG.severe(String.format("1254, buffer.refCnt(): %d", values.refCnt()));
+//        values.release();
+//      }
       throw e;
     }
 
@@ -1327,9 +1321,9 @@ public class ModbusTCPVehicleCommAdapter
   private CompletableFuture<ModbusResponse> sendModbusRequest(ModbusRequest request) {
     return sendModbusRequestWithRetry(request, 3)
         .whenComplete((response, ex) -> {
-          if (response != null) {
-            ReferenceCountUtil.release(response);
-          }
+//          if (response != null) {
+//            ReferenceCountUtil.release(response);
+//          }
         })
         .exceptionally(ex -> {
           LOG.severe("All retries failed for Modbus request: " + ex.getMessage());
@@ -1353,20 +1347,45 @@ public class ModbusTCPVehicleCommAdapter
           LOG.severe("Failed to send Modbus request: " + ex.getMessage());
           return null;
         }).thenCompose(response -> {
-          boolean shouldRetry = response == null && retriesLeft > 0;
-          if (shouldRetry) {
-            return CompletableFuture.runAsync(() -> {
-              try {
-                Thread.sleep(1000);
-              }
-              catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-              }
-            }, getExecutor())
-                .thenCompose(v -> sendModbusRequestWithRetry(request, retriesLeft - 1));
+          try {
+            boolean shouldRetry = response == null && retriesLeft > 0;
+            if (shouldRetry) {
+              return CompletableFuture.runAsync(() -> {
+                try {
+                  Thread.sleep(1000);
+                }
+                catch (InterruptedException e) {
+                  Thread.currentThread().interrupt();
+                }
+              }, getExecutor())
+                  .thenCompose(v -> sendModbusRequestWithRetry(request, retriesLeft - 1));
+            }
+            return CompletableFuture.completedFuture(response);
           }
-          return CompletableFuture.completedFuture(response);
+          finally {
+//            safeReleaseResponse(response);
+          }
+
         });
+  }
+
+  private void safeReleaseResponse(ModbusResponse response) {
+    if (response != null && response instanceof ReferenceCounted) {
+      ReferenceCounted referenceCounted = (ReferenceCounted) response;
+      while (referenceCounted.refCnt() > 0) {
+        try {
+          boolean released = referenceCounted.release();
+          if (!released) {
+            LOG.warning("Failed to release Modbus response, but no exception thrown.");
+            break;
+          }
+        }
+        catch (Exception e) {
+          LOG.warning("Exception while releasing Modbus response: " + e.getMessage());
+          break;
+        }
+      }
+    }
   }
 
   private ModbusResponse sendRequest(ModbusRequest request) {
@@ -1404,26 +1423,16 @@ public class ModbusTCPVehicleCommAdapter
   private ReadHoldingRegistersResponse handleReadHoldingRegistersResponse(
       ReadHoldingRegistersResponse readResponse
   ) {
-    ByteBuf registers = readResponse.getRegisters();
-    registers.retain();
+    ByteBuf registers = readResponse.getRegisters().copy();
     return new ReadHoldingRegistersResponse(registers) {
-      @Override
-      public boolean release() {
-        boolean released = super.release();
-        if (released && registers.refCnt() > 0) {
-          return registers.release();
-        }
-        return released;
-      }
-
-      @Override
-      public boolean release(int decrement) {
-        boolean released = super.release(decrement);
-        if (released && registers.refCnt() > 0) {
-          return registers.release(decrement);
-        }
-        return released;
-      }
+//      @Override
+//      public boolean release() {
+//        boolean released = super.release();
+//        if (released && registers.refCnt() > 0) {
+//          return registers.release();
+//        }
+//        return released;
+//      }
     };
   }
 
@@ -1436,25 +1445,13 @@ public class ModbusTCPVehicleCommAdapter
   private ReadInputRegistersResponse handleReadInputRegistersResponse(
       ReadInputRegistersResponse readInputResponse
   ) {
-    ByteBuf registers = readInputResponse.getRegisters();
-    registers.retain();
+    ByteBuf registers = readInputResponse.getRegisters().copy();
     return new ReadInputRegistersResponse(registers) {
       @Override
       public boolean release() {
-        boolean released = super.release();
-        if (released && registers.refCnt() > 0) {
-          return registers.release();
-        }
-        return released;
-      }
-
-      @Override
-      public boolean release(int decrement) {
-        boolean released = super.release(decrement);
-        if (released && registers.refCnt() > 0) {
-          return registers.release(decrement);
-        }
-        return released;
+        boolean superReleased = super.release();
+        boolean registersReleased = registers.release();
+        return superReleased && registersReleased;
       }
     };
   }
@@ -1635,7 +1632,7 @@ public class ModbusTCPVehicleCommAdapter
           positionFuture.cancel(true);
         }
         try {
-          if (!shutdownLatch.await(5, TimeUnit.SECONDS)) {
+          if (!shutdownLatch.await(1, TimeUnit.SECONDS)) {
             LOG.warning("Timeout waiting for position updates to stop");
           }
         }
