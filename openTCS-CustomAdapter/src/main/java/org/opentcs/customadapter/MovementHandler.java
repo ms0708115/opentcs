@@ -167,7 +167,7 @@ public class MovementHandler {
       return true;
     }
 
-    if (adapter.getProcessModel().getState() != Vehicle.State.IDLE) {
+    if (adapter.getProcessModel().getState() != Vehicle.State.FINISHED) {
       return false;
     }
 
@@ -175,7 +175,7 @@ public class MovementHandler {
       return (liftStatus == 2 && loadStatus == 1);
     }
     else if (operation.equalsIgnoreCase("Unload")) {
-      return (liftStatus == 0 && loadStatus == 2);
+      return (liftStatus == 2 && loadStatus == 2);
     }
     else {
       return true;
@@ -187,7 +187,7 @@ public class MovementHandler {
       case 0 -> Vehicle.State.IDLE;
       case 1 -> Vehicle.State.EXECUTING;
       // TODO: make it FINISHED after close the movement monitor
-      case 2 -> Vehicle.State.IDLE;
+      case 2 -> Vehicle.State.FINISHED;
       default -> Vehicle.State.UNKNOWN;
     };
 
