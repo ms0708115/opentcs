@@ -24,9 +24,9 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -108,7 +108,11 @@ public class ModbusTCPPeripheralCommunicationAdapter
     this.configProvider = new PeripheralDeviceConfigurationProvider();
     this.host = configProvider.getConfiguration(location.getName()).host();
     this.port = configProvider.getConfiguration(location.getName()).port();
-    this.executor = new ScheduledThreadPoolExecutor(3);
+    this.executor = Executors.newScheduledThreadPool(1, r -> {
+      Thread t = new Thread(r);
+      t.setDaemon(true);
+      return t;
+    });
     this.location = location;
     this.isConnected = false;
     this.peripheralService = requireNonNull(peripheralService, "peripheralService");
@@ -222,7 +226,6 @@ public class ModbusTCPPeripheralCommunicationAdapter
 
             setProcessModel(getProcessModel().withState(PeripheralInformation.State.IDLE));
             sendProcessModelChangedEvent(PeripheralProcessModel.Attribute.STATE);
-            executor.shutdown();
 
           })
           .exceptionally(ex -> {
@@ -553,7 +556,7 @@ public class ModbusTCPPeripheralCommunicationAdapter
             for (int i = 0; i < quantity; i++) {
               int value = responseBuffer.readUnsignedShort();
               result.put(address + i, value);
-//              LOG.info(String.format("READ ADDRESS %d GOT %d", address + i, value));
+              //LOG.info(String.format("READ ADDRESS %d GOT %d", address + i, value));
             }
 
             return result;
@@ -629,12 +632,6 @@ public class ModbusTCPPeripheralCommunicationAdapter
     }
     else if (response instanceof WriteMultipleRegistersResponse writeResponse) {
       return handleWriteMultipleRegistersResponse(writeResponse);
-    }
-    else if (response instanceof ReadInputRegistersResponse readInputResponse) {
-      return handleReadInputRegistersResponse(readInputResponse);
-    }
-    else if (response instanceof WriteSingleRegisterResponse writeSingleResponse) {
-      return handleWriteSingleRegisterResponse(writeSingleResponse);
     }
     return response;
   }
