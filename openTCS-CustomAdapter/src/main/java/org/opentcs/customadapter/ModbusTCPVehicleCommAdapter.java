@@ -553,7 +553,9 @@ public class ModbusTCPVehicleCommAdapter
               newCommand.getFinalOperation()
           )
       );
-      return false;
+//      return false;
+      // TODO: make it false after merging with Sean
+      return true;
     }
   }
 
@@ -568,7 +570,9 @@ public class ModbusTCPVehicleCommAdapter
   private boolean hasLoadingStatusProperty(Location location) {
     String locationProperty = location.getProperty("LoadingStatus");
     LOG.info("Destination Location LoadingStatus: " + locationProperty);
-    return location.getProperty("LoadingStatus") != null;
+    // TODO: Uncommon here after merging with Sean
+//    return location.getProperty("LoadingStatus") != null;
+    return true;
   }
 
   private void handleFinalMovementResult(
@@ -773,7 +777,9 @@ public class ModbusTCPVehicleCommAdapter
       long destPosition = destPoint.getPose().getPosition().getX();
 
       // Same point operation.
-      if (isSamePointOperation(cmd, sourcePoint, destPoint, destPosition)) continue;
+      if (isSamePointOperation(cmd, sourcePoint, destPoint, destPosition)) {
+        continue;
+      }
 
       long sourcePosition = sourcePoint.getPose().getPosition().getX();
       LOG.info(String.format("CREATING COMMAND FOR POSITION: %d", sourcePosition));
@@ -871,7 +877,9 @@ public class ModbusTCPVehicleCommAdapter
       obstacleSensor = 1;
     }
     else {
-      obstacleSensor = 2;
+      // TODO: make it 2 after TOYO fix obstacle sensor.
+      obstacleSensor = 1;
+//      obstacleSensor = 2;
     }
     String command = cmd.getOperation();
     liftCmd = getLiftCommand(command);
@@ -914,8 +922,8 @@ public class ModbusTCPVehicleCommAdapter
   private CMD1 createDefaultCMD1(MovementCommand cmd) {
     int speedLevel = getSpeedLevel(cmd);
     // Perform deceleration before final point.
-    if (speedLevel != 1) {
-      speedLevel = speedLevel-1;
+    if (speedLevel == 5) {
+      speedLevel = speedLevel - 1;
     }
     int obstacleSensor;
     if (cmd.getStep().getPath() != null && cmd.getStep().getPath().getName()
@@ -923,7 +931,9 @@ public class ModbusTCPVehicleCommAdapter
       obstacleSensor = 1;
     }
     else {
-      obstacleSensor = 2;
+      // TODO: make it 2 after TOYO fix obstacle sensor.
+      obstacleSensor = 1;
+//      obstacleSensor = 2;
     }
     return new CMD1(0, speedLevel, obstacleSensor, 0);
   }
@@ -959,7 +969,9 @@ public class ModbusTCPVehicleCommAdapter
       obstacleSensor = 1;
     }
     else {
-      obstacleSensor = 2;
+      // TODO: make it 2 after TOYO fix obstacle sensor.
+      obstacleSensor = 1;
+//      obstacleSensor = 2;
     }
     return new CMD1(getLiftCommand(cmd.getOperation()), getSpeedLevel(cmd), obstacleSensor, 0);
   }
@@ -1124,15 +1136,21 @@ public class ModbusTCPVehicleCommAdapter
           if (response instanceof ReadHoldingRegistersResponse readResponse) {
             ByteBuf registers = readResponse.getRegisters();
             if (registers.readableBytes() >= 2) {
-              int value = registers.readUnsignedShort();
-              boolean matches = (value == command.value());
-              LOG.info(
-                  String.format(
-                      "Read and verified command at address %d: expected %d, got %d",
-                      command.address(), command.value(), value
-                  )
-              );
-              return matches;
+              try {
+                int value = registers.readUnsignedShort();
+                boolean matches = (value == command.value());
+                LOG.info(
+                    String.format(
+                        "Read and verified command at address %d: expected %d, got %d",
+                        command.address(), command.value(), value
+                    )
+                );
+                return matches;
+              }
+              finally {
+                registers.release();
+              }
+
             }
             else {
               LOG.warning("Insufficient data returned for address " + command.address());
