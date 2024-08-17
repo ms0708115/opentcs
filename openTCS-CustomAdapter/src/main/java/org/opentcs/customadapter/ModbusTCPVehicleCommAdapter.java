@@ -539,16 +539,25 @@ public class ModbusTCPVehicleCommAdapter
   }
 
   private boolean isLocationStatusValid(MovementCommand newCommand, Location location) {
-    if (isMagazineLoadport(newCommand) && hasLoadingStatusProperty(location)) {
+    if (isCorrectLocation(newCommand) && hasLoadingStatusProperty(location)) {
       String operation = newCommand.getFinalOperation();
       String loadingStatus = location.getProperty("LoadingStatus");
       return !(("Load".equals(operation) && "Unload".equals(loadingStatus)) ||
           ("Unload".equals(operation) && "Load".equals(loadingStatus)));
     }
-    return true;
+    else {
+      LOG.warning(
+          String.format(
+              "Location is not correct: %s, Or property is not correct: %s",
+              location.getName(),
+              newCommand.getFinalOperation()
+          )
+      );
+      return false;
+    }
   }
 
-  private boolean isMagazineLoadport(MovementCommand newCommand) {
+  private boolean isCorrectLocation(MovementCommand newCommand) {
     return newCommand.getFinalDestinationLocation() != null &&
         ("Magazine_loadport".equals(newCommand.getFinalDestinationLocation().getName()) ||
             "STK_2".equals(newCommand.getFinalDestinationLocation().getName()) ||
@@ -557,6 +566,8 @@ public class ModbusTCPVehicleCommAdapter
   }
 
   private boolean hasLoadingStatusProperty(Location location) {
+    String locationProperty = location.getProperty("LoadingStatus");
+    LOG.info("Destination Location LoadingStatus: " + locationProperty);
     return location.getProperty("LoadingStatus") != null;
   }
 
@@ -570,7 +581,13 @@ public class ModbusTCPVehicleCommAdapter
     boolean locationStatusValid = locationStatusFuture.join();
 
     if (!vehicleStatusValid || !locationStatusValid) {
-      LOG.warning("Aborting current transport order due to invalid status.");
+      LOG.warning(
+          String.format(
+              "Aborting current transport order due to invalid status, "
+                  + "vehicleStatusValid: %b, locationStatusValid: %b", vehicleStatusValid,
+              locationStatusValid
+          )
+      );
       abortCurrentTransportOrder(newCommand);
     }
     else {
@@ -1346,7 +1363,8 @@ public class ModbusTCPVehicleCommAdapter
     if (response instanceof ReadHoldingRegistersResponse readResponse) {
       try {
         return handleReadHoldingRegistersResponse(readResponse);
-      } finally {
+      }
+      finally {
         readResponse.release();
       }
     }
