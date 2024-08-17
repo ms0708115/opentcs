@@ -772,35 +772,45 @@ public class ModbusTCPVehicleCommAdapter
       Point destPoint = cmd.getStep().getDestinationPoint();
       long destPosition = destPoint.getPose().getPosition().getX();
 
-      if (sourcePoint == null) {
-        if (cmd.getOperation().isEmpty()) {
-          LOG.info(
-              String.format(
-                  "No operation for in-place command at position %d",
-                  destPoint.getPose().getPosition().getX()
-              )
-          );
-        }
-        Pair<CMD1, CMD2> operationCommands = createOperationCommands(cmd);
-        stationCommandsMap.put(destPosition, operationCommands);
-        continue;
-      }
+      // Same point operation.
+      if (isSamePointOperation(cmd, sourcePoint, destPoint, destPosition)) continue;
 
       long sourcePosition = sourcePoint.getPose().getPosition().getX();
       LOG.info(String.format("CREATING COMMAND FOR POSITION: %d", sourcePosition));
       LOG.info(String.format("CREATING COMMAND FOR END POSITION: %d", destPosition));
 
+      // Normal command
       if (!cmd.isFinalMovement()) {
         Pair<CMD1, CMD2> pairCommands = new Pair<>(createCMD1(cmd), createCMD2(cmd));
         stationCommandsMap.put(sourcePosition, pairCommands);
         continue;
       }
 
+      // Last point command
       Pair<CMD1, CMD2> moveCommands = createDefaultCommands(cmd);
       stationCommandsMap.put(sourcePosition, moveCommands);
       Pair<CMD1, CMD2> operationCommands = createOperationCommands(cmd);
       stationCommandsMap.put(destPosition, operationCommands);
     }
+  }
+
+  private boolean isSamePointOperation(
+      MovementCommand cmd, Point sourcePoint, Point destPoint, long destPosition
+  ) {
+    if (sourcePoint == null) {
+      if (cmd.getOperation().isEmpty()) {
+        LOG.info(
+            String.format(
+                "No operation for in-place command at position %d",
+                destPoint.getPose().getPosition().getX()
+            )
+        );
+      }
+      Pair<CMD1, CMD2> operationCommands = createOperationCommands(cmd);
+      stationCommandsMap.put(destPosition, operationCommands);
+      return true;
+    }
+    return false;
   }
 
   public String getLocationNameFromDestinationPoint(MovementCommand command) {
@@ -854,7 +864,15 @@ public class ModbusTCPVehicleCommAdapter
   private CMD1 createCMD1(MovementCommand cmd) {
     int liftCmd;
     int speedLevel = getSpeedLevel(cmd);
-    int obstacleSensor = 1;
+    int obstacleSensor;
+
+    if (cmd.getStep().getPath() != null && cmd.getStep().getPath().getName()
+        .equals("Point-0013 --- Point-0017")) {
+      obstacleSensor = 1;
+    }
+    else {
+      obstacleSensor = 2;
+    }
     String command = cmd.getOperation();
     liftCmd = getLiftCommand(command);
     return new CMD1(
@@ -895,7 +913,19 @@ public class ModbusTCPVehicleCommAdapter
 
   private CMD1 createDefaultCMD1(MovementCommand cmd) {
     int speedLevel = getSpeedLevel(cmd);
-    return new CMD1(0, speedLevel, 1, 0);
+    // Perform deceleration before final point.
+    if (speedLevel != 1) {
+      speedLevel = speedLevel-1;
+    }
+    int obstacleSensor;
+    if (cmd.getStep().getPath() != null && cmd.getStep().getPath().getName()
+        .equals("Point-0013 --- Point-0017")) {
+      obstacleSensor = 1;
+    }
+    else {
+      obstacleSensor = 2;
+    }
+    return new CMD1(0, speedLevel, obstacleSensor, 0);
   }
 
   private CMD2 createDefaultCMD2(MovementCommand cmd) {
@@ -922,7 +952,16 @@ public class ModbusTCPVehicleCommAdapter
   }
 
   private CMD1 createOperationCMD1(MovementCommand cmd) {
-    return new CMD1(getLiftCommand(cmd.getOperation()), getSpeedLevel(cmd), 1, 0);
+    int obstacleSensor;
+    if (cmd.getStep().getPath() != null && cmd.getStep().getPath().getName()
+        .equals("Point-0013 --- Point-0017")) {
+      LOG.warning("Nearing OHB narrow path, set obstacle sensor level to 1");
+      obstacleSensor = 1;
+    }
+    else {
+      obstacleSensor = 2;
+    }
+    return new CMD1(getLiftCommand(cmd.getOperation()), getSpeedLevel(cmd), obstacleSensor, 0);
   }
 
   private CMD2 createOperationCMD2(MovementCommand cmd) {
