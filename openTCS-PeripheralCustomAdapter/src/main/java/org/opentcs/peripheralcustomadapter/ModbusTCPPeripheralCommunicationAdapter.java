@@ -477,7 +477,7 @@ public class ModbusTCPPeripheralCommunicationAdapter
   }
 
   private void pollingSensorStatus() {
-    if(!location.getName().equals("Magazine_loadport")) {
+    if (!location.getName().equals("Magazine_loadport")) {
       setProcessModel(
           getProcessModel().withState(PeripheralInformation.State.EXECUTING)
       );
