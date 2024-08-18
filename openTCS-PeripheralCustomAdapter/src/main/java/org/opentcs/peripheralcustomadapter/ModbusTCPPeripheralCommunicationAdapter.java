@@ -128,7 +128,7 @@ public class ModbusTCPPeripheralCommunicationAdapter
     this.configProvider = new PeripheralDeviceConfigurationProvider();
     this.host = configProvider.getConfiguration(location.getName()).host();
     this.port = configProvider.getConfiguration(location.getName()).port();
-    this.executor = Executors.newScheduledThreadPool(3);
+    this.executor = Executors.newScheduledThreadPool(4);
     this.location = location;
     this.isConnected = false;
     this.peripheralService = requireNonNull(peripheralService, "peripheralService");
@@ -342,8 +342,8 @@ public class ModbusTCPPeripheralCommunicationAdapter
             getProcessModel().withState(PeripheralInformation.State.EXECUTING)
         );
         sendProcessModelChangedEvent(PeripheralProcessModel.Attribute.STATE);
-        getOHBFail.set(false);
       }
+      getOHBFail.set(false);
       if (newResult != oldResult) {
         if (newResult == 2) {
           peripheralService.updateObjectProperty(location, "LoadingStatus", "Load");
@@ -379,8 +379,9 @@ public class ModbusTCPPeripheralCommunicationAdapter
             getProcessModel().withState(PeripheralInformation.State.EXECUTING)
         );
         sendProcessModelChangedEvent(PeripheralProcessModel.Attribute.STATE);
-        getSideForkFail.set(false);
       }
+
+      getSideForkFail.set(false);
 
       if (newSideFork1Result != oldSideFork1Result) {
         if (newSideFork1Result == 2) {
@@ -433,8 +434,9 @@ public class ModbusTCPPeripheralCommunicationAdapter
             getProcessModel().withState(PeripheralInformation.State.EXECUTING)
         );
         sendProcessModelChangedEvent(PeripheralProcessModel.Attribute.STATE);
-        getSTKFail.set(false);
       }
+
+      getSTKFail.set(false);
 
       if (newZIP1Result != oldZIP1Result) {
         if (newZIP1Result == 2) {
@@ -475,6 +477,13 @@ public class ModbusTCPPeripheralCommunicationAdapter
   }
 
   private void pollingSensorStatus() {
+    if(!location.getName().equals("Magazine_loadport")) {
+      setProcessModel(
+          getProcessModel().withState(PeripheralInformation.State.EXECUTING)
+      );
+      sendProcessModelChangedEvent(PeripheralProcessModel.Attribute.STATE);
+    }
+
     pollingStatusFuture = executor.scheduleWithFixedDelay(() -> {
       if (!heartBeatFail.get()) {
         try {
@@ -522,11 +531,13 @@ public class ModbusTCPPeripheralCommunicationAdapter
   private void startCatchReadSingleRegister() {
     LOG.info("Starting reading single register, Peripheral Name : " + location.getName() + ".");
 
-    catchReadSingleRegisterFuture = executor.scheduleAtFixedRate(() -> {
+    catchReadSingleRegisterFuture = executor.scheduleWithFixedDelay(() -> {
       try {
+        Thread.sleep(50);
+
         readSingleRegister(300, 12).thenAccept(value -> {
           updateStatus(statusMapHeartbeat, value.get(300));
-          if (location.getName().equals("STK2")) {
+          if (location.getName().equals("STK_2")) {
             updateStatus(statusMapZIPStatus1, value.get(301));
             updateStatus(statusMapZIPStatus2, value.get(302));
           }
@@ -549,7 +560,7 @@ public class ModbusTCPPeripheralCommunicationAdapter
       catch (Exception e) {
         LOG.severe("Error in heartbeat: " + e.getMessage());
       }
-    }, 0, 250, TimeUnit.MILLISECONDS);
+    }, 0, 100, TimeUnit.MILLISECONDS);
   }
 
   public void updateStatus(String key, int value) {
@@ -580,7 +591,7 @@ public class ModbusTCPPeripheralCommunicationAdapter
           boolean newHeartBit = getStatus(statusMapHeartbeat) == 1;
           boolean oldHeartBit = readHeartBeatToggle.getAndSet(newHeartBit);
           if (oldHeartBit == newHeartBit) {
-            if (heartBeatCount.addAndGet(1) >= 4) {
+            if (heartBeatCount.addAndGet(1) >= 6) {
               LOG.info("Heart bit unchanged, Peripheral: " + location.getName());
               heartBeatFail.set(true);
               setProcessModel(getProcessModel().withState(PeripheralInformation.State.ERROR));
