@@ -135,6 +135,8 @@ public class MovementHandler {
                 return null;
               });
           adapter.getProcessModel().setState(Vehicle.State.IDLE);
+          LOG.info("TransportOrder Finished, stop movement monitoring");
+          stopMonitoring();
         }
       }
       else {
@@ -152,7 +154,7 @@ public class MovementHandler {
     else {
       LOG.warning(
           String.format(
-              "currentCommandIndex: %d < pendingCommands.size : %d", currentCommandIndex,
+              "currentCommandIndex: %d = pendingCommands.size : %d", currentCommandIndex,
               pendingCommands.size()
           )
       );
@@ -165,7 +167,7 @@ public class MovementHandler {
       return true;
     }
 
-    if (adapter.getProcessModel().getState() != Vehicle.State.IDLE) {
+    if (adapter.getProcessModel().getState() != Vehicle.State.FINISHED) {
       return false;
     }
 
@@ -173,7 +175,7 @@ public class MovementHandler {
       return (liftStatus == 2 && loadStatus == 1);
     }
     else if (operation.equalsIgnoreCase("Unload")) {
-      return (liftStatus == 0 && loadStatus == 2);
+      return (liftStatus == 2 && loadStatus == 2);
     }
     else {
       return true;
@@ -185,7 +187,7 @@ public class MovementHandler {
       case 0 -> Vehicle.State.IDLE;
       case 1 -> Vehicle.State.EXECUTING;
       // TODO: make it FINISHED after close the movement monitor
-      case 2 -> Vehicle.State.IDLE;
+      case 2 -> Vehicle.State.FINISHED;
       default -> Vehicle.State.UNKNOWN;
     };
 
@@ -220,7 +222,6 @@ public class MovementHandler {
       catch (InterruptedException e) {
         Thread.currentThread().interrupt();
       }
-      // 清理操作
     });
 
     pendingCommands.clear();

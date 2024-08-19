@@ -539,16 +539,27 @@ public class ModbusTCPVehicleCommAdapter
   }
 
   private boolean isLocationStatusValid(MovementCommand newCommand, Location location) {
-    if (isMagazineLoadport(newCommand) && hasLoadingStatusProperty(location)) {
+    if (isCorrectLocation(newCommand) && hasLoadingStatusProperty(location)) {
       String operation = newCommand.getFinalOperation();
       String loadingStatus = location.getProperty("LoadingStatus");
       return !(("Load".equals(operation) && "Unload".equals(loadingStatus)) ||
           ("Unload".equals(operation) && "Load".equals(loadingStatus)));
     }
-    return true;
+    else {
+      LOG.warning(
+          String.format(
+              "Location is not correct: %s, Or property is not correct: %s",
+              location.getName(),
+              newCommand.getFinalOperation()
+          )
+      );
+//      return false;
+      // TODO: make it false after merging with Sean
+      return true;
+    }
   }
 
-  private boolean isMagazineLoadport(MovementCommand newCommand) {
+  private boolean isCorrectLocation(MovementCommand newCommand) {
     return newCommand.getFinalDestinationLocation() != null &&
         ("Magazine_loadport".equals(newCommand.getFinalDestinationLocation().getName()) ||
             "STK_2".equals(newCommand.getFinalDestinationLocation().getName()) ||
@@ -557,7 +568,11 @@ public class ModbusTCPVehicleCommAdapter
   }
 
   private boolean hasLoadingStatusProperty(Location location) {
-    return location.getProperty("LoadingStatus") != null;
+    String locationProperty = location.getProperty("LoadingStatus");
+    LOG.info("Destination Location LoadingStatus: " + locationProperty);
+    // TODO: Uncommon here after merging with Sean
+//    return location.getProperty("LoadingStatus") != null;
+    return true;
   }
 
   private void handleFinalMovementResult(
@@ -570,7 +585,13 @@ public class ModbusTCPVehicleCommAdapter
     boolean locationStatusValid = locationStatusFuture.join();
 
     if (!vehicleStatusValid || !locationStatusValid) {
-      LOG.warning("Aborting current transport order due to invalid status.");
+      LOG.warning(
+          String.format(
+              "Aborting current transport order due to invalid status, "
+                  + "vehicleStatusValid: %b, locationStatusValid: %b", vehicleStatusValid,
+              locationStatusValid
+          )
+      );
       abortCurrentTransportOrder(newCommand);
     }
     else {
@@ -755,17 +776,8 @@ public class ModbusTCPVehicleCommAdapter
       Point destPoint = cmd.getStep().getDestinationPoint();
       long destPosition = destPoint.getPose().getPosition().getX();
 
-      if (sourcePoint == null) {
-        if (cmd.getOperation().isEmpty()) {
-          LOG.info(
-              String.format(
-                  "No operation for in-place command at position %d",
-                  destPoint.getPose().getPosition().getX()
-              )
-          );
-        }
-        Pair<CMD1, CMD2> operationCommands = createOperationCommands(cmd);
-        stationCommandsMap.put(destPosition, operationCommands);
+      // Same point operation.
+      if (isSamePointOperation(cmd, sourcePoint, destPoint, destPosition)) {
         continue;
       }
 
@@ -773,17 +785,38 @@ public class ModbusTCPVehicleCommAdapter
       LOG.info(String.format("CREATING COMMAND FOR POSITION: %d", sourcePosition));
       LOG.info(String.format("CREATING COMMAND FOR END POSITION: %d", destPosition));
 
+      // Normal command
       if (!cmd.isFinalMovement()) {
         Pair<CMD1, CMD2> pairCommands = new Pair<>(createCMD1(cmd), createCMD2(cmd));
         stationCommandsMap.put(sourcePosition, pairCommands);
         continue;
       }
 
+      // Last point command
       Pair<CMD1, CMD2> moveCommands = createDefaultCommands(cmd);
       stationCommandsMap.put(sourcePosition, moveCommands);
       Pair<CMD1, CMD2> operationCommands = createOperationCommands(cmd);
       stationCommandsMap.put(destPosition, operationCommands);
     }
+  }
+
+  private boolean isSamePointOperation(
+      MovementCommand cmd, Point sourcePoint, Point destPoint, long destPosition
+  ) {
+    if (sourcePoint == null) {
+      if (cmd.getOperation().isEmpty()) {
+        LOG.info(
+            String.format(
+                "No operation for in-place command at position %d",
+                destPoint.getPose().getPosition().getX()
+            )
+        );
+      }
+      Pair<CMD1, CMD2> operationCommands = createOperationCommands(cmd);
+      stationCommandsMap.put(destPosition, operationCommands);
+      return true;
+    }
+    return false;
   }
 
   public String getLocationNameFromDestinationPoint(MovementCommand command) {
@@ -837,7 +870,17 @@ public class ModbusTCPVehicleCommAdapter
   private CMD1 createCMD1(MovementCommand cmd) {
     int liftCmd;
     int speedLevel = getSpeedLevel(cmd);
-    int obstacleSensor = 1;
+    int obstacleSensor;
+
+    if (cmd.getStep().getPath() != null && cmd.getStep().getPath().getName()
+        .equals("Point-0013 --- Point-0017")) {
+      obstacleSensor = 1;
+    }
+    else {
+      // TODO: make it 2 after TOYO fix obstacle sensor.
+      obstacleSensor = 1;
+//      obstacleSensor = 2;
+    }
     String command = cmd.getOperation();
     liftCmd = getLiftCommand(command);
     return new CMD1(
@@ -878,7 +921,21 @@ public class ModbusTCPVehicleCommAdapter
 
   private CMD1 createDefaultCMD1(MovementCommand cmd) {
     int speedLevel = getSpeedLevel(cmd);
-    return new CMD1(0, speedLevel, 1, 0);
+    // Perform deceleration before final point.
+    if (speedLevel == 5) {
+      speedLevel = speedLevel - 1;
+    }
+    int obstacleSensor;
+    if (cmd.getStep().getPath() != null && cmd.getStep().getPath().getName()
+        .equals("Point-0013 --- Point-0017")) {
+      obstacleSensor = 1;
+    }
+    else {
+      // TODO: make it 2 after TOYO fix obstacle sensor.
+      obstacleSensor = 1;
+//      obstacleSensor = 2;
+    }
+    return new CMD1(0, speedLevel, obstacleSensor, 0);
   }
 
   private CMD2 createDefaultCMD2(MovementCommand cmd) {
@@ -905,7 +962,18 @@ public class ModbusTCPVehicleCommAdapter
   }
 
   private CMD1 createOperationCMD1(MovementCommand cmd) {
-    return new CMD1(getLiftCommand(cmd.getOperation()), getSpeedLevel(cmd), 1, 0);
+    int obstacleSensor;
+    if (cmd.getStep().getPath() != null && cmd.getStep().getPath().getName()
+        .equals("Point-0013 --- Point-0017")) {
+      LOG.warning("Nearing OHB narrow path, set obstacle sensor level to 1");
+      obstacleSensor = 1;
+    }
+    else {
+      // TODO: make it 2 after TOYO fix obstacle sensor.
+      obstacleSensor = 1;
+//      obstacleSensor = 2;
+    }
+    return new CMD1(getLiftCommand(cmd.getOperation()), getSpeedLevel(cmd), obstacleSensor, 0);
   }
 
   private CMD2 createOperationCMD2(MovementCommand cmd) {
@@ -1025,9 +1093,18 @@ public class ModbusTCPVehicleCommAdapter
     return sendModbusRequest(request)
         .thenApply(response -> {
           if (response instanceof ReadInputRegistersResponse readResponse) {
-            ByteBuf responseBuffer = readResponse.getRegisters();
-            return responseBuffer.readUnsignedShort();
+            ByteBuf responseBuffer = null;
+            try {
+              responseBuffer = readResponse.getRegisters();
+              return responseBuffer.readUnsignedShort();
+            }
+            finally {
+              if (responseBuffer != null) {
+                responseBuffer.release();
+              }
+            }
           }
+
           throw new RuntimeException("Invalid response type");
         });
   }
@@ -1059,15 +1136,21 @@ public class ModbusTCPVehicleCommAdapter
           if (response instanceof ReadHoldingRegistersResponse readResponse) {
             ByteBuf registers = readResponse.getRegisters();
             if (registers.readableBytes() >= 2) {
-              int value = registers.readUnsignedShort();
-              boolean matches = (value == command.value());
-              LOG.info(
-                  String.format(
-                      "Read and verified command at address %d: expected %d, got %d",
-                      command.address(), command.value(), value
-                  )
-              );
-              return matches;
+              try {
+                int value = registers.readUnsignedShort();
+                boolean matches = (value == command.value());
+                LOG.info(
+                    String.format(
+                        "Read and verified command at address %d: expected %d, got %d",
+                        command.address(), command.value(), value
+                    )
+                );
+                return matches;
+              }
+              finally {
+                registers.release();
+              }
+
             }
             else {
               LOG.warning("Insufficient data returned for address " + command.address());
@@ -1335,7 +1418,12 @@ public class ModbusTCPVehicleCommAdapter
 
   private ModbusResponse processResponse(ModbusResponse response) {
     if (response instanceof ReadHoldingRegistersResponse readResponse) {
-      return handleReadHoldingRegistersResponse(readResponse);
+      try {
+        return handleReadHoldingRegistersResponse(readResponse);
+      }
+      finally {
+        readResponse.release();
+      }
     }
     else if (response instanceof WriteMultipleRegistersResponse writeResponse) {
       return handleWriteMultipleRegistersResponse(writeResponse);
