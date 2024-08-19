@@ -128,12 +128,7 @@ public class ModbusTCPPeripheralCommunicationAdapter
     this.configProvider = new PeripheralDeviceConfigurationProvider();
     this.host = configProvider.getConfiguration(location.getName()).host();
     this.port = configProvider.getConfiguration(location.getName()).port();
-    if (location.getName().equals("Magazine_loadport")) {
-      this.executor = Executors.newScheduledThreadPool(6);
-    }
-    else {
-      this.executor = Executors.newScheduledThreadPool(4);
-    }
+    this.executor = Executors.newScheduledThreadPool(4);
     this.location = location;
     this.isConnected = false;
     this.peripheralService = requireNonNull(peripheralService, "peripheralService");
@@ -224,9 +219,9 @@ public class ModbusTCPPeripheralCommunicationAdapter
             getProcessModel().withCommAdapterConnected(true);
             startCatchReadSingleRegister();
             startReadHeartbeat();
-            if (location.getName().equals("Magazine_loadport")) {
-              startWriteHeartBeat();
-            }
+//            if (location.getName().equals("Magazine_loadport")) {
+//              startWriteHeartBeat();
+//            }
             pollingSensorStatus();
 
             setProcessModel(getProcessModel().withState(PeripheralInformation.State.IDLE));
@@ -287,11 +282,11 @@ public class ModbusTCPPeripheralCommunicationAdapter
       getEFEMFail.set(false);
 
       if (oldLoadingResult != newLoadingResult) {
-        if (oldLoadingResult == 2) {
+        if (newLoadingResult == 2) {
           peripheralService.updateObjectProperty(location, "LoadingStatus", "Load");
           LOG.info("Peripheral : " + location.getName() + ", Current Status :Load");
         }
-        else if (oldLoadingResult == 1) {
+        else if (newLoadingResult == 1) {
           peripheralService.updateObjectProperty(location, "LoadingStatus", "Unload");
           LOG.info("Peripheral : " + location.getName() + ", Current Status :Unload");
         }
@@ -299,7 +294,7 @@ public class ModbusTCPPeripheralCommunicationAdapter
           peripheralService.updateObjectProperty(location, "LoadingStatus", "UNKNOWN");
           LOG.info("Peripheral : " + location.getName() + ", Current Status :Unknown");
         }
-        if (newQuantityResult == oldQuantityResult) {
+        if (newQuantityResult != oldQuantityResult) {
           peripheralService.updateObjectProperty(
               location, "Magazine_Quantity", String.valueOf(newQuantityResult)
           );
