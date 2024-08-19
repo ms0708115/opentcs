@@ -128,7 +128,12 @@ public class ModbusTCPPeripheralCommunicationAdapter
     this.configProvider = new PeripheralDeviceConfigurationProvider();
     this.host = configProvider.getConfiguration(location.getName()).host();
     this.port = configProvider.getConfiguration(location.getName()).port();
-    this.executor = Executors.newScheduledThreadPool(4);
+    if (location.getName().equals("Magazine_loadport")) {
+      this.executor = Executors.newScheduledThreadPool(6);
+    }
+    else {
+      this.executor = Executors.newScheduledThreadPool(4);
+    }
     this.location = location;
     this.isConnected = false;
     this.peripheralService = requireNonNull(peripheralService, "peripheralService");
