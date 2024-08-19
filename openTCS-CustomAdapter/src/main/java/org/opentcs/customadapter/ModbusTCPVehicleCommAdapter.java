@@ -539,11 +539,19 @@ public class ModbusTCPVehicleCommAdapter
   }
 
   private boolean isLocationStatusValid(MovementCommand newCommand, Location location) {
+    if (newCommand.getFinalDestinationLocation() != null && newCommand.getFinalDestinationLocation()
+        .getName().contains("TempPark")) {
+      return true;
+    }
+    if (newCommand.getFinalOperation().equals("NOP")) {
+      LOG.info("Got NOP command, always valid for every locations.");
+      return true;
+    }
     if (isCorrectLocation(newCommand) && hasLoadingStatusProperty(location)) {
       String operation = newCommand.getFinalOperation();
       String loadingStatus = location.getProperty("LoadingStatus");
-      return !(("Load".equals(operation) && "Unload".equals(loadingStatus)) ||
-          ("Unload".equals(operation) && "Load".equals(loadingStatus)));
+      return (("Load".equals(operation) && "Load".equals(loadingStatus)) ||
+          ("Unload".equals(operation) && "Unload".equals(loadingStatus)));
     }
     else {
       LOG.warning(
@@ -553,9 +561,7 @@ public class ModbusTCPVehicleCommAdapter
               newCommand.getFinalOperation()
           )
       );
-//      return false;
-      // TODO: make it false after merging with Sean
-      return true;
+      return false;
     }
   }
 
@@ -563,16 +569,14 @@ public class ModbusTCPVehicleCommAdapter
     return newCommand.getFinalDestinationLocation() != null &&
         ("Magazine_loadport".equals(newCommand.getFinalDestinationLocation().getName()) ||
             "STK_2".equals(newCommand.getFinalDestinationLocation().getName()) ||
-            "sidefork".equals(newCommand.getFinalDestinationLocation().getName()) ||
+            "Sidefork".equals(newCommand.getFinalDestinationLocation().getName()) ||
             "OHB".equals(newCommand.getFinalDestinationLocation().getName()));
   }
 
   private boolean hasLoadingStatusProperty(Location location) {
     String locationProperty = location.getProperty("LoadingStatus");
     LOG.info("Destination Location LoadingStatus: " + locationProperty);
-    // TODO: Uncommon here after merging with Sean
-//    return location.getProperty("LoadingStatus") != null;
-    return true;
+    return location.getProperty("LoadingStatus") != null;
   }
 
   private void handleFinalMovementResult(
@@ -1138,14 +1142,7 @@ public class ModbusTCPVehicleCommAdapter
             if (registers.readableBytes() >= 2) {
               try {
                 int value = registers.readUnsignedShort();
-                boolean matches = (value == command.value());
-                LOG.info(
-                    String.format(
-                        "Read and verified command at address %d: expected %d, got %d",
-                        command.address(), command.value(), value
-                    )
-                );
-                return matches;
+                return (value == command.value());
               }
               finally {
                 registers.release();
@@ -1196,7 +1193,6 @@ public class ModbusTCPVehicleCommAdapter
     for (ModbusCommand command : commands) {
       // Get the word size of the command
       int commandWordSize = getCommandWordSize(command);
-      LOG.info(String.format("commandWordSize: %d", commandWordSize));
       // If the word size of the current batch plus the new command exceeds the limit,
       // write the current batch and start a new batch
       if (batchWordSize + commandWordSize >= maxBatchSize) {
@@ -1215,19 +1211,12 @@ public class ModbusTCPVehicleCommAdapter
         batchWordSize = 0;
       }
       batch.add(command);
-      LOG.info(String.format("batch size: %d", batch.size()));
       batchWordSize += commandWordSize;
     }
 
     // Write the last batch if it's not empty
     if (!batch.isEmpty()) {
       int finalStartAddress = startAddress;
-      LOG.info(
-          String.format(
-              "WRITING LAST BATCH, finalStartAddress: %d",
-              startAddress
-          )
-      );
       futureChain = futureChain.thenCompose(
           v -> writeBatch(batch, finalStartAddress, commandType)
       );
@@ -1258,7 +1247,6 @@ public class ModbusTCPVehicleCommAdapter
         values.writeShort(command.value());
         registerCount += 1;
       }
-      LOG.info("Writing " + commandType + " command: " + command.toLogString());
     }
 
     WriteMultipleRegistersRequest request = new WriteMultipleRegistersRequest(
@@ -1577,7 +1565,7 @@ public class ModbusTCPVehicleCommAdapter
   }
 
   public class PositionUpdater {
-    private static final int UPDATE_INTERVAL = 1500;
+    private static final int UPDATE_INTERVAL = 500;
     private static final int POSITION_REGISTER_ADDRESS = 109;
     private final ScheduledExecutorService executor;
     private ScheduledFuture<?> positionFuture;
