@@ -51,10 +51,10 @@ public class MovementHandler {
     }
 
     pendingCommands = new ArrayList<>(commands);
-    LOG.info(String.format("SIZE OF pendingCommands: %d", pendingCommands.size()));
+//    LOG.info(String.format("SIZE OF pendingCommands: %d", pendingCommands.size()));
     currentCommandIndex = 0;
 
-    monitoringTask = executor.scheduleAtFixedRate(() -> {
+    monitoringTask = adapter.getScheduledExecutorService().scheduleAtFixedRate(() -> {
       if (!running.get() || Thread.currentThread().isInterrupted()) {
         shutdownLatch.countDown();
         return;
@@ -73,7 +73,7 @@ public class MovementHandler {
     CompletableFuture<Integer> liftStatusFuture = adapter.readSingleRegister(106);
     CompletableFuture<Integer> loadStatusFuture = adapter.readSingleRegister(107);
 
-    CompletableFuture.allOf(vehicleStatusFuture, liftStatusFuture)
+    CompletableFuture.allOf(vehicleStatusFuture, liftStatusFuture, loadStatusFuture)
         .thenCompose(v -> CompletableFuture.supplyAsync(() -> {
           int vehicleStatus = vehicleStatusFuture.join();
           int liftStatus = liftStatusFuture.join();
@@ -82,7 +82,6 @@ public class MovementHandler {
           return new int[]{vehicleStatus, liftStatus, loadStatus};
         }, executor))
         .thenAccept(statuses -> {
-          LOG.info("Following messages come from MovementHandler.");
           updateVehicleStatus(
               statuses[0], statuses[1], statuses[2], adapter.getProcessModel().getPosition()
           );
@@ -103,19 +102,12 @@ public class MovementHandler {
     );
 
     updateVehicleState(vehicleStatus, loadStatus);
-    LOG.info("updateVehicleState HAS COMPLETED.");
 
     // Check if current movement command is completed
     if (currentCommandIndex < pendingCommands.size()) {
       MovementCommand currentCommand = pendingCommands.get(currentCommandIndex);
-      LOG.info(
-          String.format(
-              "CURRENTLY PENDING CMD DESTINATION: %s",
-              currentCommand.getStep().getDestinationPoint()
-          )
-      );
 
-      if (hasReachedDestination(currentCommand, currentPosition) &&
+      if (hasReachedDestination(vehicleStatus, currentCommand, currentPosition) &&
           isOperationCompleted(currentCommand, liftStatus, loadStatus)) {
         LOG.info(
             String.format(
@@ -123,20 +115,24 @@ public class MovementHandler {
                 currentPosition
             )
         );
-        adapter.getProcessModel().commandExecuted(currentCommand);
         currentCommandIndex++;
-
         if (currentCommandIndex >= pendingCommands.size()) {
           LOG.info("All commands completed");
-//          stopMonitoring();
           adapter.getPositionUpdater().stopPositionUpdates()
-              .thenRun(() -> LOG.info("Position updates stopped successfully"))
+              .thenRun(() -> {
+                LOG.info("Position updates stopped successfully");
+                adapter.getProcessModel().setState(Vehicle.State.IDLE);
+                LOG.info(
+                    String.format("Vehicle %s set to IDLE", adapter.getProcessModel().getName())
+                );
+                stopMonitoring();
+              })
               .exceptionally(ex -> {
                 LOG.severe("Error stopping position updates: " + ex.getMessage());
                 return null;
               });
-          adapter.getProcessModel().setState(Vehicle.State.IDLE);
         }
+        adapter.getProcessModel().commandExecuted(currentCommand);
       }
       else {
         LOG.info(
@@ -150,14 +146,7 @@ public class MovementHandler {
         );
       }
     }
-    else {
-      LOG.warning(
-          String.format(
-              "currentCommandIndex: %d < pendingCommands.size : %d", currentCommandIndex,
-              pendingCommands.size()
-          )
-      );
-    }
+
   }
 
   private boolean isOperationCompleted(MovementCommand command, int liftStatus, int loadStatus) {
@@ -166,7 +155,7 @@ public class MovementHandler {
       return true;
     }
 
-    if (adapter.getProcessModel().getState() != Vehicle.State.FINISHED) {
+    if (adapter.getProcessModel().getState() != Vehicle.State.IDLE) {
       return false;
     }
 
@@ -174,7 +163,7 @@ public class MovementHandler {
       return (liftStatus == 2 && loadStatus == 1);
     }
     else if (operation.equalsIgnoreCase("Unload")) {
-      return (liftStatus == 0 && loadStatus == 2);
+      return (liftStatus == 2 && loadStatus == 2);
     }
     else {
       return true;
@@ -183,9 +172,9 @@ public class MovementHandler {
 
   private void updateVehicleState(int vehicleStatus, int loadStatus) {
     Vehicle.State vehicleState = switch (vehicleStatus) {
-      case 0 -> Vehicle.State.IDLE;
+      case 0, 2 -> Vehicle.State.IDLE;
       case 1 -> Vehicle.State.EXECUTING;
-      case 2 -> Vehicle.State.IDLE;
+      // TODO: make it FINISHED after close the movement monitor
       default -> Vehicle.State.UNKNOWN;
     };
 
@@ -197,7 +186,9 @@ public class MovementHandler {
     adapter.getProcessModel().setLoadHandlingDevices(devices);
   }
 
-  private boolean hasReachedDestination(MovementCommand command, String currentPosition) {
+  private boolean hasReachedDestination(
+      int vehicleStatus, MovementCommand command, String currentPosition
+  ) {
     LOG.info(
         String.format(
             "CHECKING BETWEEN: %s & %s",
@@ -205,13 +196,17 @@ public class MovementHandler {
             currentPosition
         )
     );
-    return command.getStep().getDestinationPoint().getName().equals(currentPosition);
+    if (command.isFinalMovement()) {
+      return (command.getStep().getDestinationPoint().getName().equals(currentPosition)
+          && vehicleStatus == 2);
+    }
+    return (command.getStep().getDestinationPoint().getName().equals(currentPosition));
   }
 
   public void stopMonitoring() {
     running.set(false);
     if (monitoringTask != null) {
-      monitoringTask.cancel(true);  // 嘗試中斷正在運行的任務
+      monitoringTask.cancel(true);
     }
     executor.execute(() -> {
       try {
@@ -220,7 +215,6 @@ public class MovementHandler {
       catch (InterruptedException e) {
         Thread.currentThread().interrupt();
       }
-      // 清理操作
     });
 
     pendingCommands.clear();
