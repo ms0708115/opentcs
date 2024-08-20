@@ -8,7 +8,6 @@ import com.digitalpetri.modbus.requests.ModbusRequest;
 import com.digitalpetri.modbus.requests.ReadHoldingRegistersRequest;
 import com.digitalpetri.modbus.requests.ReadInputRegistersRequest;
 import com.digitalpetri.modbus.requests.WriteMultipleRegistersRequest;
-import com.digitalpetri.modbus.requests.WriteSingleRegisterRequest;
 import com.digitalpetri.modbus.responses.ModbusResponse;
 import com.digitalpetri.modbus.responses.ReadHoldingRegistersResponse;
 import com.digitalpetri.modbus.responses.ReadInputRegistersResponse;
@@ -34,6 +33,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
@@ -140,6 +140,14 @@ public class ModbusTCPVehicleCommAdapter
   private final AtomicBoolean heartBeatRunning = new AtomicBoolean(true);
   private final CountDownLatch heartShutdownLatch = new CountDownLatch(1);
 
+
+  private final ConcurrentHashMap<String, AtomicInteger> writeModbusMap = new ConcurrentHashMap<>();
+  private ScheduledFuture<?> catchWriteMultipleRegistersFuture;
+
+  private final String writeModbusMapHeartbeat = "heartbeat";
+  private final String writeModbusMapVehicleCmd = "VehicleCommand";
+  private final String writeModbusMapDestination = "Destination";
+
   /**
    * A communication adapter for ModbusTCP-based vehicle communication.
    * <p>
@@ -179,6 +187,13 @@ public class ModbusTCPVehicleCommAdapter
     this.peripheralService = peripheralService;
     this.customScheduledExecutor = new ScheduledThreadPoolExecutor(4);
     ResourceLeakDetector.setLevel(ResourceLeakDetector.Level.ADVANCED);
+    initializeStatusMap();
+  }
+
+  private void initializeStatusMap() {
+    writeModbusMap.put(writeModbusMapHeartbeat, new AtomicInteger(0));
+    writeModbusMap.put(writeModbusMapVehicleCmd, new AtomicInteger(0));
+    writeModbusMap.put(writeModbusMapDestination, new AtomicInteger(0));
   }
 
   @Override
@@ -230,6 +245,7 @@ public class ModbusTCPVehicleCommAdapter
           return null;
         });
     stopErrorCode();
+    stopCatchWriteSingleRegister();
     stopHeartBeat()
         .thenRun(() -> LOG.info("Heart Beat updates stopped successfully"))
         .exceptionally(ex -> {
@@ -251,6 +267,28 @@ public class ModbusTCPVehicleCommAdapter
 
   public ScheduledExecutorService getScheduledExecutorService() {
     return this.customScheduledExecutor;
+  }
+
+  private void startCatchWriteSingleRegister() {
+    LOG.info("Starting write single register, Vehicle Name : " + vehicle.getName() + ".");
+
+    catchWriteMultipleRegistersFuture = customScheduledExecutor.scheduleWithFixedDelay(() -> {
+      try {
+        Thread.sleep(50);
+
+        CompletableFuture<Void> writeFuture = writeMultipleRegisters(100, 10);
+
+        writeFuture.thenRun(() -> {
+          LOG.fine("Catch Write Single Register successfully ");
+        }).exceptionally(ex -> {
+          LOG.warning("Catch Write Single Register Failed: " + ex.getMessage());
+          return null;
+        });
+      }
+      catch (Exception e) {
+        LOG.severe("Error in Catch Write Single Register: " + e.getMessage());
+      }
+    }, 0, 100, TimeUnit.MILLISECONDS);
   }
 
   private void startErrorCode() {
@@ -309,7 +347,7 @@ public class ModbusTCPVehicleCommAdapter
   }
 
   private void startHeartbeat() {
-    heartBeatFuture = customScheduledExecutor.scheduleAtFixedRate(() -> {
+    heartBeatFuture = customScheduledExecutor.scheduleWithFixedDelay(() -> {
       boolean currentValue = toggleHeartbeatAndRegisterWriting();
       addDelayAndReadRegister(currentValue)
           .thenAccept(value -> handleHeartbeatValueMismatch(currentValue, value))
@@ -322,7 +360,7 @@ public class ModbusTCPVehicleCommAdapter
 
   private boolean toggleHeartbeatAndRegisterWriting() {
     boolean currentValue = heartBeatToggle.getAndSet(!heartBeatToggle.get());
-    writeSingleRegister(500, currentValue ? 1 : 0);
+    updateWriteModbusInfo(writeModbusMapHeartbeat, currentValue ? 1 : 0);
     return currentValue;
   }
 
@@ -333,7 +371,7 @@ public class ModbusTCPVehicleCommAdapter
     catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       logError("Failed to sleep thread: ", e);
-      writeSingleRegister(100, currentValue ? 1 : 0);
+      updateWriteModbusInfo(writeModbusMapHeartbeat, currentValue ? 1 : 0);
       return CompletableFuture.completedFuture(-1);
     }
     return readSingleRegister(100);
@@ -342,11 +380,7 @@ public class ModbusTCPVehicleCommAdapter
   private void handleHeartbeatValueMismatch(boolean currentValue, int value) {
 //    LOG.warning(String.format("current read heart bit value: %d", value));
     if (value != (currentValue ? 1 : 0)) {
-      writeSingleRegister(100, currentValue ? 1 : 0)
-          .exceptionally(ex -> {
-            logError("Failed to retry heartbeat write: ", ex);
-            return null;
-          });
+      updateWriteModbusInfo(writeModbusMapHeartbeat, currentValue ? 1 : 0);
     }
   }
 
@@ -376,6 +410,14 @@ public class ModbusTCPVehicleCommAdapter
   private void stopErrorCode() {
     if (errorCodeFuture != null && !errorCodeFuture.isCancelled()) {
       errorCodeFuture.cancel(true);
+    }
+  }
+
+  private void stopCatchWriteSingleRegister() {
+    if (catchWriteMultipleRegistersFuture != null && !catchWriteMultipleRegistersFuture
+        .isCancelled()) {
+      LOG.info("Stop Catch WriteSingleRegister.");
+      catchWriteMultipleRegistersFuture.cancel(true);
     }
   }
 
@@ -449,7 +491,7 @@ public class ModbusTCPVehicleCommAdapter
     Vehicle.ProcState procState = vehicle.getProcState();
     if (procState == Vehicle.ProcState.PROCESSING_ORDER) {
       try {
-        writeSingleRegister(105, 2);
+        updateWriteModbusInfo(writeModbusMapVehicleCmd, 2);
         LOG.info("Traffic control: Vehicle stopped due to IDLE state while processing order.");
       }
       catch (Exception e) {
@@ -497,6 +539,7 @@ public class ModbusTCPVehicleCommAdapter
           return null;
         });
     stopErrorCode();
+    stopCatchWriteSingleRegister();
     stopHeartBeat()
         .thenRun(() -> LOG.info("Heart Beat updates stopped successfully"))
         .exceptionally(ex -> {
@@ -735,11 +778,7 @@ public class ModbusTCPVehicleCommAdapter
   }
 
   private void stopVehicle() {
-    writeSingleRegister(105, 2)
-        .exceptionally(ex -> {
-          logError("Failed to set vehicle stop: ", ex);
-          return null;
-        });
+    updateWriteModbusInfo(writeModbusMapVehicleCmd, 2);
     getProcessModel().setState(Vehicle.State.IDLE);
   }
 
@@ -792,7 +831,7 @@ public class ModbusTCPVehicleCommAdapter
           LOG.info("Starting Positioning.");
           positionUpdater.startPositionUpdates();
           LOG.info("Starting Mission.");
-          writeSingleRegister(105, 1);
+          updateWriteModbusInfo(writeModbusMapVehicleCmd, 1);
         })
         .exceptionally(ex -> {
           LOG.severe("Failed to write commands and start monitoring: " + ex.getMessage());
@@ -1104,6 +1143,44 @@ public class ModbusTCPVehicleCommAdapter
     return new CMD2(1, 1);
   }
 
+  /**
+   * Update Catch Write Single.
+   *
+   * @param key The Write Map Key.
+   * @param value The Write Map value.
+   */
+
+  public void updateWriteModbusInfo(String key, int value) {
+    AtomicInteger atomicValue = writeModbusMap.get(key);
+    if (atomicValue == null) {
+      throw new NullPointerException("Update write status map value is null");
+    }
+    atomicValue.set(value);
+  }
+
+  /**
+   * Get Catch Write Single.
+   *
+   * @param key The Write Map Key.
+   */
+
+  public int getWriteModbusInfo(String key) {
+    AtomicInteger value = writeModbusMap.get(key);
+    if (value == null) {
+      throw new NullPointerException("Get write status map value is null");
+    }
+
+    return value.get();
+  }
+
+  /**
+   * Get Catch Write Map Vehicle Command Key.
+   */
+
+  public String getVehicleCommandWriteModbusMapKey() {
+    return writeModbusMapVehicleCmd;
+  }
+
   private static String getStateString(Location location) {
     PeripheralInformation.State state = location.getPeripheralInformation().getState();
     String stateString;
@@ -1150,34 +1227,31 @@ public class ModbusTCPVehicleCommAdapter
   }
 
   private CompletableFuture<Void> writeAllModbusCommands() {
-    return writeSingleRegister(108, 0)
-        .thenCompose(v -> {
-          if (!positionModbusCommand.isEmpty()) {
-            try {
-              return writeModbusCommands(positionModbusCommand, "Position");
-            }
-            catch (ExecutionException | InterruptedException e) {
-              throw new RuntimeException(e);
-            }
-          }
-          else {
-            return CompletableFuture.completedFuture(null);
-          }
-        })
-        .thenCompose(v -> {
-          if (!cmdModbusCommand.isEmpty()) {
-            try {
-              return writeModbusCommands(cmdModbusCommand, "CMD");
-            }
-            catch (ExecutionException | InterruptedException e) {
-              throw new RuntimeException(e);
-            }
-          }
-          else {
-            return CompletableFuture.completedFuture(null);
-          }
-        })
-        .thenCompose(v -> writeSingleRegister(108, 1))
+    CompletableFuture<Void> futureChain = CompletableFuture.completedFuture(null);
+
+    if (!positionModbusCommand.isEmpty()) {
+      futureChain = futureChain.thenCompose(v -> {
+        try {
+          return writeModbusCommands(positionModbusCommand, "Position");
+        }
+        catch (ExecutionException | InterruptedException e) {
+          throw new CompletionException(e);
+        }
+      });
+    }
+
+    if (!cmdModbusCommand.isEmpty()) {
+      futureChain = futureChain.thenCompose(v -> {
+        try {
+          return writeModbusCommands(cmdModbusCommand, "CMD");
+        }
+        catch (ExecutionException | InterruptedException e) {
+          throw new CompletionException(e);
+        }
+      });
+    }
+
+    return futureChain
         .thenCompose(v -> readAndVerifyCommands())
         .exceptionally(ex -> {
           LOG.severe("Error in writeAllModbusCommands: " + ex.getMessage());
@@ -1185,10 +1259,34 @@ public class ModbusTCPVehicleCommAdapter
         });
   }
 
-  CompletableFuture<Void> writeSingleRegister(int address, int value) {
-    ByteBuf buffer = Unpooled.buffer(2);
-    buffer.writeShort(value);
-    WriteSingleRegisterRequest request = new WriteSingleRegisterRequest(address, value);
+  CompletableFuture<Void> writeMultipleRegisters(int address, int quantity) {
+    ByteBuf buffer = Unpooled.buffer(quantity * 2);
+    try {
+      for (int i = 0; i < quantity; i++) {
+        int value;
+        if (i == 0) {
+          value = getWriteModbusInfo(writeModbusMapHeartbeat);
+        }
+        else if (i == 5) {
+          value = getWriteModbusInfo(writeModbusMapVehicleCmd);
+        }
+        else if (i == 8) {
+          value = getWriteModbusInfo(writeModbusMapDestination);
+        }
+        else {
+          value = 0;
+        }
+        buffer.writeShort(value);
+      }
+    }
+    catch (NullPointerException e) {
+      LOG.severe("Error getting write status: " + e.getMessage());
+      return CompletableFuture.failedFuture(new RuntimeException("Failed to get write status", e));
+    }
+
+    WriteMultipleRegistersRequest request = new WriteMultipleRegistersRequest(
+        address, quantity, buffer
+    );
 
     return sendModbusRequest(request)
         .thenAccept(response -> {
@@ -1411,8 +1509,10 @@ public class ModbusTCPVehicleCommAdapter
             this.isConnected = true;
             LOG.info("Successfully connected to Modbus TCP server");
             getProcessModel().setCommAdapterConnected(true);
+            startCatchWriteSingleRegister();
+
 //            startHeartbeat();
-            startErrorCode();
+            //startErrorCode();
             LOG.warning("Starting sending heart bit.");
           })
           .exceptionally(ex -> {
@@ -1706,7 +1806,7 @@ public class ModbusTCPVehicleCommAdapter
      */
     public void startPositionUpdates() {
       running.set(true);
-      positionFuture = customScheduledExecutor.scheduleAtFixedRate(
+      positionFuture = customScheduledExecutor.scheduleWithFixedDelay(
           () -> {
             if (!running.get()) {
               shutdownLatch.countDown();
