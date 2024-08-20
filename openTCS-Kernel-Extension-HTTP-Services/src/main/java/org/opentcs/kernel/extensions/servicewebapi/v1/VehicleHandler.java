@@ -18,12 +18,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.opentcs.components.kernel.services.PlantModelService;
 import org.opentcs.components.kernel.services.RouterService;
 import org.opentcs.components.kernel.services.VehicleService;
 import org.opentcs.data.ObjectUnknownException;
 import org.opentcs.data.TCSObjectReference;
 import org.opentcs.data.model.Location;
 import org.opentcs.data.model.Path;
+import org.opentcs.data.model.PlantModel;
 import org.opentcs.data.model.Point;
 import org.opentcs.data.model.TCSResourceReference;
 import org.opentcs.data.model.Vehicle;
@@ -40,6 +42,7 @@ import org.opentcs.kernel.extensions.servicewebapi.v1.binding.PutVehicleAllowedO
  */
 public class VehicleHandler {
 
+  private final PlantModelService plantModelService;
   private final VehicleService vehicleService;
   private final RouterService routerService;
   private final KernelExecutorWrapper executorWrapper;
@@ -53,10 +56,12 @@ public class VehicleHandler {
    */
   @Inject
   public VehicleHandler(
+      PlantModelService plantModelService,
       VehicleService vehicleService,
       RouterService routerService,
       KernelExecutorWrapper executorWrapper
   ) {
+    this.plantModelService = requireNonNull(plantModelService, "plantModelService");
     this.vehicleService = requireNonNull(vehicleService, "vehicleService");
     this.routerService = requireNonNull(routerService, "routerService");
     this.executorWrapper = requireNonNull(executorWrapper, "executorWrapper");
@@ -320,5 +325,16 @@ public class VehicleHandler {
           .map(LoadHandlingDeviceTO::fromLoadHandlingDevice)
           .collect(Collectors.toList());
     });
+  }
+
+  public Vehicle getVehicleErrorCode(String name)
+      throws ObjectUnknownException {
+    PlantModel plantModel = plantModelService.getPlantModel();
+    for (Vehicle vehicle : plantModel.getVehicles()) {
+      if (vehicle.getName().equals(name)) {
+        return vehicle;
+      }
+    }
+    return null;
   }
 }

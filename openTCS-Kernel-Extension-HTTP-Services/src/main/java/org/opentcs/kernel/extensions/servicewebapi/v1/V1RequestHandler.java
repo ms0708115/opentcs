@@ -24,6 +24,7 @@ import org.opentcs.kernel.extensions.servicewebapi.v1.binding.GetPeripheralJobRe
 import org.opentcs.kernel.extensions.servicewebapi.v1.binding.GetPeripheralResponseTo;
 import org.opentcs.kernel.extensions.servicewebapi.v1.binding.GetTransportOrderResponseTO;
 import org.opentcs.kernel.extensions.servicewebapi.v1.binding.GetVehicleAttachmentInfoResponseTO;
+import org.opentcs.kernel.extensions.servicewebapi.v1.binding.GetVehicleErrorCodeResponseTO;
 import org.opentcs.kernel.extensions.servicewebapi.v1.binding.PlantModelTO;
 import org.opentcs.kernel.extensions.servicewebapi.v1.binding.PostOrderSequenceRequestTO;
 import org.opentcs.kernel.extensions.servicewebapi.v1.binding.PostPeripheralJobRequestTO;
@@ -171,6 +172,10 @@ public class V1RequestHandler
     service.get(
         "/vehicles",
         this::handleGetVehicles
+    );
+    service.get(
+        "/vehicles/:NAME/errorCode",
+        this::handleGetVehicleErrorCode
     );
     service.post(
         "/transportOrders/dispatcher/trigger",
@@ -554,6 +559,18 @@ public class V1RequestHandler
             valueIfKeyPresent(
                 request.queryMap(),
                 "procState"
+            )
+        )
+    );
+  }
+
+  private Object handleGetVehicleErrorCode(Request request, Response response)
+      throws IllegalArgumentException {
+    response.type(HttpConstants.CONTENT_TYPE_APPLICATION_JSON_UTF8);
+    return jsonBinder.toJson(
+        GetVehicleErrorCodeResponseTO.fromVehicle(
+            vehicleHandler.getVehicleErrorCode(
+                request.params(":NAME")
             )
         )
     );

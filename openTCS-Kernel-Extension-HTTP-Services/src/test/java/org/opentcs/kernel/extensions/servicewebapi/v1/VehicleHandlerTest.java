@@ -29,6 +29,7 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
+import org.opentcs.components.kernel.services.PlantModelService;
 import org.opentcs.components.kernel.services.RouterService;
 import org.opentcs.components.kernel.services.VehicleService;
 import org.opentcs.data.ObjectUnknownException;
@@ -48,7 +49,7 @@ import org.opentcs.kernel.extensions.servicewebapi.v1.binding.PutVehicleAllowedO
  * Unit tests for {@link VehicleHandler}.
  */
 class VehicleHandlerTest {
-
+  private PlantModelService orderService;
   private VehicleService vehicleService;
   private RouterService routerService;
   private KernelExecutorWrapper executorWrapper;
@@ -61,11 +62,12 @@ class VehicleHandlerTest {
 
   @BeforeEach
   void setUp() {
+    orderService = mock();
     vehicleService = mock();
     routerService = mock();
     executorWrapper = new KernelExecutorWrapper(Executors.newSingleThreadExecutor());
 
-    handler = new VehicleHandler(vehicleService, routerService, executorWrapper);
+    handler = new VehicleHandler(orderService, vehicleService, routerService, executorWrapper);
 
     vehicle = new Vehicle("some-vehicle");
     adapterDescriptionMock = new MockVehicleCommAdapterDescription();
