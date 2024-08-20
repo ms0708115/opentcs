@@ -203,7 +203,7 @@ public class MovementHandler {
     }
     if (this.isRunnung && this.setStop) {
       LOG.warning("SET 105 TO STOP (0)");
-      adapter.writeSingleRegister(105, 0);
+      adapter.updateWriteModbusInfo(adapter.getVehicleCommandWriteModbusMapKey(), 0);
       setStop = false;
     }
     boolean liftState = (loadStatus == 1);
@@ -254,6 +254,7 @@ public class MovementHandler {
       running.set(false);
       pendingCommands.clear();
       currentCommandIndex = 0;
+      this.setStop = true;
 
       if (monitoringFuture != null) {
         monitoringFuture.cancel(true);
