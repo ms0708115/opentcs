@@ -8,6 +8,7 @@ import com.digitalpetri.modbus.requests.ModbusRequest;
 import com.digitalpetri.modbus.requests.ReadHoldingRegistersRequest;
 import com.digitalpetri.modbus.requests.ReadInputRegistersRequest;
 import com.digitalpetri.modbus.requests.WriteMultipleRegistersRequest;
+import com.digitalpetri.modbus.requests.WriteSingleRegisterRequest;
 import com.digitalpetri.modbus.responses.ModbusResponse;
 import com.digitalpetri.modbus.responses.ReadHoldingRegistersResponse;
 import com.digitalpetri.modbus.responses.ReadInputRegistersResponse;
@@ -135,7 +136,9 @@ public class ModbusTCPVehicleCommAdapter
   private MovementHandler movementHandler;
   private final PeripheralService peripheralService;
   private final VehicleConfigurationProvider configProvider;
-  private final ScheduledExecutorService customScheduledExecutor;
+  private ScheduledExecutorService customScheduledExecutor;
+  private final AtomicBoolean heartBeatRunning = new AtomicBoolean(true);
+  private final CountDownLatch heartShutdownLatch = new CountDownLatch(1);
 
   /**
    * A communication adapter for ModbusTCP-based vehicle communication.
@@ -218,15 +221,27 @@ public class ModbusTCPVehicleCommAdapter
       return;
     }
     super.terminate();
+    List<Runnable> pedningTasks = customScheduledExecutor.shutdownNow();
+    LOG.warning(String.format("Cleared execution in queue: %d", pedningTasks.size()));
     positionUpdater.stopPositionUpdates()
         .thenRun(() -> LOG.info("Position updates stopped successfully"))
         .exceptionally(ex -> {
           LOG.severe("Error stopping position updates: " + ex.getMessage());
           return null;
         });
-    stopHeartBeat();
     stopErrorCode();
-    movementHandler.stopMonitoring();
+    stopHeartBeat()
+        .thenRun(() -> LOG.info("Heart Beat updates stopped successfully"))
+        .exceptionally(ex -> {
+          LOG.severe("Error stopping Heart updates: " + ex.getMessage());
+          return null;
+        });
+    movementHandler.stopMonitoring()
+        .thenRun(() -> LOG.info("Monitoring updates stopped successfully"))
+        .exceptionally(ex -> {
+          LOG.severe("Error stopping Monitoring updates: " + ex.getMessage());
+          return null;
+        });
     initialized = false;// Stop the heartbeat mechanism
   }
 
@@ -339,10 +354,23 @@ public class ModbusTCPVehicleCommAdapter
     LOG.severe(message + ex.getMessage());
   }
 
-  private void stopHeartBeat() {
-    if (heartBeatFuture != null && !heartBeatFuture.isCancelled()) {
-      heartBeatFuture.cancel(true);
-    }
+
+  public CompletableFuture<Void> stopHeartBeat() {
+    return CompletableFuture.runAsync(() -> {
+      heartBeatRunning.set(false);
+      if (heartBeatFuture != null) {
+        heartBeatFuture.cancel(true);
+      }
+      try {
+        if (!heartShutdownLatch.await(1, TimeUnit.SECONDS)) {
+          LOG.warning("Timeout waiting for position updates to stop");
+        }
+      }
+      catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        LOG.warning("Interrupted while waiting for position updates to stop");
+      }
+    }, customScheduledExecutor);
   }
 
   private void stopErrorCode() {
@@ -421,7 +449,7 @@ public class ModbusTCPVehicleCommAdapter
     Vehicle.ProcState procState = vehicle.getProcState();
     if (procState == Vehicle.ProcState.PROCESSING_ORDER) {
       try {
-        writeSingleRegister(105, 0);
+        writeSingleRegister(105, 2);
         LOG.info("Traffic control: Vehicle stopped due to IDLE state while processing order.");
       }
       catch (Exception e) {
@@ -468,9 +496,20 @@ public class ModbusTCPVehicleCommAdapter
           LOG.severe("Error stopping position updates: " + ex.getMessage());
           return null;
         });
-    stopHeartBeat();
     stopErrorCode();
-    movementHandler.stopMonitoring();
+    stopHeartBeat()
+        .thenRun(() -> LOG.info("Heart Beat updates stopped successfully"))
+        .exceptionally(ex -> {
+          LOG.severe("Error stopping Heart updates: " + ex.getMessage());
+          return null;
+        });
+    movementHandler.stopMonitoring()
+        .thenRun(() -> LOG.info("Monitoring updates stopped successfully"))
+        .exceptionally(ex -> {
+          LOG.severe("Error stopping Monitoring updates: " + ex.getMessage());
+          return null;
+        });
+
     super.disable();
   }
 
@@ -696,7 +735,7 @@ public class ModbusTCPVehicleCommAdapter
   }
 
   private void stopVehicle() {
-    writeSingleRegister(105, 0)
+    writeSingleRegister(105, 2)
         .exceptionally(ex -> {
           logError("Failed to set vehicle stop: ", ex);
           return null;
@@ -748,10 +787,12 @@ public class ModbusTCPVehicleCommAdapter
     convertMovementCommandsToModbusCommands(allMovementCommands);
     writeAllModbusCommands()
         .thenRun(() -> {
-          movementHandler.startMonitoring(allMovementCommands);
           LOG.info("Starting Monitoring.");
-          positionUpdater.startPositionUpdates();
+          movementHandler.startMonitoring(allMovementCommands);
           LOG.info("Starting Positioning.");
+          positionUpdater.startPositionUpdates();
+          LOG.info("Starting Mission.");
+          writeSingleRegister(105, 1);
         })
         .exceptionally(ex -> {
           LOG.severe("Failed to write commands and start monitoring: " + ex.getMessage());
@@ -948,8 +989,8 @@ public class ModbusTCPVehicleCommAdapter
     }
     else {
       // TODO: make it 2 after TOYO fix obstacle sensor.
-      obstacleSensor = 1;
-//      obstacleSensor = 2;
+//      obstacleSensor = 1;
+      obstacleSensor = 2;
     }
     String command = cmd.getOperation();
     liftCmd = getLiftCommand(command);
@@ -1002,8 +1043,8 @@ public class ModbusTCPVehicleCommAdapter
     }
     else {
       // TODO: make it 2 after TOYO fix obstacle sensor.
-      obstacleSensor = 1;
-//      obstacleSensor = 2;
+//      obstacleSensor = 1;
+      obstacleSensor = 2;
     }
     return new CMD1(0, speedLevel, obstacleSensor, 0);
   }
@@ -1040,8 +1081,8 @@ public class ModbusTCPVehicleCommAdapter
     }
     else {
       // TODO: make it 2 after TOYO fix obstacle sensor.
-      obstacleSensor = 1;
-//      obstacleSensor = 2;
+//      obstacleSensor = 1;
+      obstacleSensor = 2;
     }
     return new CMD1(getLiftCommand(cmd.getOperation()), getSpeedLevel(cmd), obstacleSensor, 0);
   }
@@ -1144,10 +1185,10 @@ public class ModbusTCPVehicleCommAdapter
         });
   }
 
-  private CompletableFuture<Void> writeSingleRegister(int address, int value) {
+  CompletableFuture<Void> writeSingleRegister(int address, int value) {
     ByteBuf buffer = Unpooled.buffer(2);
     buffer.writeShort(value);
-    WriteMultipleRegistersRequest request = new WriteMultipleRegistersRequest(address, 1, buffer);
+    WriteSingleRegisterRequest request = new WriteSingleRegisterRequest(address, value);
 
     return sendModbusRequest(request)
         .thenAccept(response -> {
@@ -1370,7 +1411,7 @@ public class ModbusTCPVehicleCommAdapter
             this.isConnected = true;
             LOG.info("Successfully connected to Modbus TCP server");
             getProcessModel().setCommAdapterConnected(true);
-            startHeartbeat();
+//            startHeartbeat();
             startErrorCode();
             LOG.warning("Starting sending heart bit.");
           })
