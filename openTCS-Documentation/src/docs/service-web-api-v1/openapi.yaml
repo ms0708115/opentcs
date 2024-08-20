@@ -497,6 +497,36 @@ paths:
                   type: string
                   description: Details on the actual error.
                   example: Could not find vehicle 'Vehicle-0001'.
+  "/vehicles/{NAME}/errorCode":
+    get:
+      tags:
+        - Vehicles
+      summary: Retrieves the vehicle with the given name.
+      description: ""
+      parameters:
+        - name: NAME
+          in: path
+          description: The name of the vehicle to be retrieved.
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorCode"
+        "404":
+          description: Referencing object that could not be found.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                  description: Details on the actual error.
+                  example: Could not find vehicle 'Vehicle-0001'.
   "/vehicles/{NAME}/withdrawal":
     post:
       tags:
@@ -1709,6 +1739,18 @@ components:
           items:
             $ref: "#/components/schemas/Property"
           description: The order sequence's properties
+    ErrorCode:
+      title: Vehicle Error Code
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: The name of the Vehicle.
+          example: SAA-mini-OHT-0001
+        errorCode:
+          type: int
+          description: The vehicle current error code.
     VehicleState:
       title: Vehicle State
       type: object
