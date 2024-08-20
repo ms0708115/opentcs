@@ -40,6 +40,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -126,7 +127,9 @@ public class ModbusTCPVehicleCommAdapter
    */
   private boolean initialized;
   private final AtomicBoolean heartBeatToggle = new AtomicBoolean(false);
+  private final AtomicInteger errorCode = new AtomicInteger(0);
   private ScheduledFuture<?> heartBeatFuture;
+  private ScheduledFuture<?> errorCodeFuture;
   private PositionUpdater positionUpdater;
   private final PlantModelService plantModelService;
   private MovementHandler movementHandler;
@@ -222,6 +225,7 @@ public class ModbusTCPVehicleCommAdapter
           return null;
         });
     stopHeartBeat();
+    stopErrorCode();
     movementHandler.stopMonitoring();
     initialized = false;// Stop the heartbeat mechanism
   }
@@ -232,6 +236,61 @@ public class ModbusTCPVehicleCommAdapter
 
   public ScheduledExecutorService getScheduledExecutorService() {
     return this.customScheduledExecutor;
+  }
+
+  private void startErrorCode() {
+    errorCodeFuture = customScheduledExecutor.scheduleWithFixedDelay(
+        this::updateErrorCode,
+        0, 500, TimeUnit.MILLISECONDS
+    );
+  }
+
+  private void updateErrorCode() {
+    CompletableFuture<Integer> vehicleErrorCodeFuture = readSingleRegister(119);
+    CompletableFuture<Integer> liftErrorCodeFuture = readSingleRegister(120);
+
+    CompletableFuture.allOf(vehicleErrorCodeFuture, liftErrorCodeFuture)
+        .thenCompose(v -> CompletableFuture.supplyAsync(() -> {
+          int vehicleStatus = vehicleErrorCodeFuture.join();
+          int liftStatus = liftErrorCodeFuture.join();
+
+          return new int[]{vehicleStatus, liftStatus};
+        }, customScheduledExecutor))
+        .thenAccept(errorCodes -> processErrorCodes(errorCodes[0], errorCodes[1]))
+        .exceptionally(this::handleErrorCodeUpdateException);
+  }
+
+  private void processErrorCodes(int vehicleErrorCode, int hoistErrorCode) {
+    LOG.info("Vehicle: " + vehicleErrorCode + ", Hoist: " + hoistErrorCode);
+    int newErrorCode = determineNewErrorCode(vehicleErrorCode, hoistErrorCode);
+    if (isExistingErrorCode(newErrorCode)) {
+      return;
+    }
+    updateErrorCodeIfChanged(newErrorCode);
+  }
+
+  private boolean isExistingErrorCode(int code) {
+    return errorCode.get() != 0 && errorCode.get() == code;
+  }
+
+  private int determineNewErrorCode(int vehicleErrorCode, int hoistErrorCode) {
+    return vehicleErrorCode != 0 ? vehicleErrorCode : hoistErrorCode;
+  }
+
+  private void updateErrorCodeIfChanged(int newErrorCode) {
+    if (errorCode.getAndSet(newErrorCode) != newErrorCode) {
+      LOG.info("Error code updated to: " + newErrorCode);
+      plantModelService.updateObjectProperty(
+          vehicle.getReference(),
+          "ErrorCode",
+          String.valueOf(newErrorCode)
+      );
+    }
+  }
+
+  private Void handleErrorCodeUpdateException(Throwable ex) {
+    LOG.severe("Failed to update Error Code: " + ex.getMessage());
+    return null;
   }
 
   private void startHeartbeat() {
@@ -283,6 +342,12 @@ public class ModbusTCPVehicleCommAdapter
   private void stopHeartBeat() {
     if (heartBeatFuture != null && !heartBeatFuture.isCancelled()) {
       heartBeatFuture.cancel(true);
+    }
+  }
+
+  private void stopErrorCode() {
+    if (errorCodeFuture != null && !errorCodeFuture.isCancelled()) {
+      errorCodeFuture.cancel(true);
     }
   }
 
@@ -404,6 +469,7 @@ public class ModbusTCPVehicleCommAdapter
           return null;
         });
     stopHeartBeat();
+    stopErrorCode();
     movementHandler.stopMonitoring();
     super.disable();
   }
@@ -1305,6 +1371,7 @@ public class ModbusTCPVehicleCommAdapter
             LOG.info("Successfully connected to Modbus TCP server");
             getProcessModel().setCommAdapterConnected(true);
             startHeartbeat();
+            startErrorCode();
             LOG.warning("Starting sending heart bit.");
           })
           .exceptionally(ex -> {
