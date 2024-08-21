@@ -148,6 +148,30 @@ public class ModbusTCPVehicleCommAdapter
   private final String writeModbusMapVehicleCmd = "VehicleCommand";
   private final String writeModbusMapDestination = "Destination";
 
+  private final ConcurrentHashMap<String, AtomicInteger> readModbusMap = new ConcurrentHashMap<>();
+  private ScheduledFuture<?> catchReadSingleRegisterFuture;
+
+  private final String readModbusMapHeartbeat = "heartbeat";
+  private final String readModbusMapDirection = "VehicleDirection";
+  private final String readModbusMapSwitch = "VehicleSwitch";
+  private final String readModbusMapSpeedLevel = "VehicleSpeedLevel";
+  private final String readModbusMapObstacleLevel = "VehicleObstacleLevel";
+  private final String readModbusMapVehicleStatus = "VehicleStatus";
+  private final String readModbusMapLiftStatus = "LiftStatus";
+  private final String readModbusMapLoadingStatus = "LoadingStatus";
+  private final String readModbusMapDestination = "Destination";
+  private final String readModbusMapMarkNo = "MarkNo";
+  private final String readModbusMapVehicleCurrentPositionTo16 = "VehicleCurrentPositionTo16";
+  private final String readModbusMapVehicleCurrentPositionTo32 = "VehicleCurrentPositionTo32";
+  private final String readModbusMapLiftCurrentPosition = "LiftCurrentPosition";
+  private final String readModbusMapSideForkCurrentPosition = "SideForkCurrentPosition";
+  private final String readModbusMapVehicleMode = "VehicleMode";
+  private final String readModbusMapLiftMode = "LiftMode";
+  private final String readModbusMapMileageMeter = "MileageMeter";
+  private final String readModbusMapMileageKilometer = "MileageKilometer";
+  private final String readModbusMapVehicleErrorCode = "VehicleErrorCode";
+  private final String readModbusMapLiftErrorCode = "LiftErrorCode";
+
   /**
    * A communication adapter for ModbusTCP-based vehicle communication.
    * <p>
@@ -194,6 +218,27 @@ public class ModbusTCPVehicleCommAdapter
     writeModbusMap.put(writeModbusMapHeartbeat, new AtomicInteger(0));
     writeModbusMap.put(writeModbusMapVehicleCmd, new AtomicInteger(0));
     writeModbusMap.put(writeModbusMapDestination, new AtomicInteger(0));
+
+    readModbusMap.put(readModbusMapHeartbeat, new AtomicInteger(0));
+    readModbusMap.put(readModbusMapDirection, new AtomicInteger(0));
+    readModbusMap.put(readModbusMapSwitch, new AtomicInteger(0));
+    readModbusMap.put(readModbusMapSpeedLevel, new AtomicInteger(0));
+    readModbusMap.put(readModbusMapObstacleLevel, new AtomicInteger(0));
+    readModbusMap.put(readModbusMapVehicleStatus, new AtomicInteger(0));
+    readModbusMap.put(readModbusMapLiftStatus, new AtomicInteger(0));
+    readModbusMap.put(readModbusMapLoadingStatus, new AtomicInteger(0));
+    readModbusMap.put(readModbusMapDestination, new AtomicInteger(0));
+    readModbusMap.put(readModbusMapMarkNo, new AtomicInteger(0));
+    readModbusMap.put(readModbusMapVehicleCurrentPositionTo16, new AtomicInteger(0));
+    readModbusMap.put(readModbusMapVehicleCurrentPositionTo32, new AtomicInteger(0));
+    readModbusMap.put(readModbusMapLiftCurrentPosition, new AtomicInteger(0));
+    readModbusMap.put(readModbusMapSideForkCurrentPosition, new AtomicInteger(0));
+    readModbusMap.put(readModbusMapVehicleMode, new AtomicInteger(0));
+    readModbusMap.put(readModbusMapLiftMode, new AtomicInteger(0));
+    readModbusMap.put(readModbusMapMileageMeter, new AtomicInteger(0));
+    readModbusMap.put(readModbusMapMileageKilometer, new AtomicInteger(0));
+    readModbusMap.put(readModbusMapVehicleErrorCode, new AtomicInteger(0));
+    readModbusMap.put(readModbusMapLiftErrorCode, new AtomicInteger(0));
   }
 
   @Override
@@ -246,6 +291,7 @@ public class ModbusTCPVehicleCommAdapter
         });
     stopErrorCode();
     stopCatchWriteSingleRegister();
+    stopCatchReadSingleRegister();
     stopHeartBeat()
         .thenRun(() -> LOG.info("Heart Beat updates stopped successfully"))
         .exceptionally(ex -> {
@@ -291,6 +337,42 @@ public class ModbusTCPVehicleCommAdapter
     }, 0, 100, TimeUnit.MILLISECONDS);
   }
 
+  private void startCatchReadSingleRegister() {
+    LOG.info("Starting read single register, Vehicle Name : " + vehicle.getName() + ".");
+
+    catchReadSingleRegisterFuture = customScheduledExecutor.scheduleWithFixedDelay(() -> {
+      try {
+        Thread.sleep(50);
+
+        readSingleRegister(100, 25).thenAccept(value -> {
+          updateReadModbusInfo(readModbusMapHeartbeat, value.get(100));
+          updateReadModbusInfo(readModbusMapDirection, value.get(101));
+          updateReadModbusInfo(readModbusMapSwitch, value.get(102));
+          updateReadModbusInfo(readModbusMapSpeedLevel, value.get(103));
+          updateReadModbusInfo(readModbusMapObstacleLevel, value.get(104));
+          updateReadModbusInfo(readModbusMapVehicleStatus, value.get(105));
+          updateReadModbusInfo(readModbusMapLiftStatus, value.get(106));
+          updateReadModbusInfo(readModbusMapLoadingStatus, value.get(107));
+          updateReadModbusInfo(readModbusMapDestination, value.get(108));
+          updateReadModbusInfo(readModbusMapMarkNo, value.get(109));
+          updateReadModbusInfo(readModbusMapVehicleCurrentPositionTo16, value.get(110));
+          updateReadModbusInfo(readModbusMapVehicleCurrentPositionTo32, value.get(111));
+          updateReadModbusInfo(readModbusMapLiftCurrentPosition, value.get(112));
+          updateReadModbusInfo(readModbusMapSideForkCurrentPosition, value.get(113));
+          updateReadModbusInfo(readModbusMapVehicleMode, value.get(114));
+          updateReadModbusInfo(readModbusMapLiftMode, value.get(115));
+          updateReadModbusInfo(readModbusMapMileageMeter, value.get(117));
+          updateReadModbusInfo(readModbusMapMileageKilometer, value.get(118));
+          updateReadModbusInfo(readModbusMapVehicleErrorCode, value.get(119));
+          updateReadModbusInfo(readModbusMapLiftErrorCode, value.get(120));
+        });
+      }
+      catch (Exception e) {
+        LOG.severe("Error in Catch Read Single Register: " + e.getMessage());
+      }
+    }, 0, 100, TimeUnit.MILLISECONDS);
+  }
+
   private void startErrorCode() {
     errorCodeFuture = customScheduledExecutor.scheduleWithFixedDelay(
         this::updateErrorCode,
@@ -299,18 +381,14 @@ public class ModbusTCPVehicleCommAdapter
   }
 
   private void updateErrorCode() {
-    CompletableFuture<Integer> vehicleErrorCodeFuture = readSingleRegister(119);
-    CompletableFuture<Integer> liftErrorCodeFuture = readSingleRegister(120);
-
-    CompletableFuture.allOf(vehicleErrorCodeFuture, liftErrorCodeFuture)
-        .thenCompose(v -> CompletableFuture.supplyAsync(() -> {
-          int vehicleStatus = vehicleErrorCodeFuture.join();
-          int liftStatus = liftErrorCodeFuture.join();
-
-          return new int[]{vehicleStatus, liftStatus};
-        }, customScheduledExecutor))
-        .thenAccept(errorCodes -> processErrorCodes(errorCodes[0], errorCodes[1]))
-        .exceptionally(this::handleErrorCodeUpdateException);
+    int vehicleErrorCode = getReadModbusInfo(readModbusMapVehicleErrorCode);
+    int liftErrorCode = getReadModbusInfo(readModbusMapLiftErrorCode);
+    try {
+      processErrorCodes(vehicleErrorCode, liftErrorCode);
+    }
+    catch (Exception ex) {
+      handleErrorCodeUpdateException(ex);
+    }
   }
 
   private void processErrorCodes(int vehicleErrorCode, int hoistErrorCode) {
@@ -365,16 +443,17 @@ public class ModbusTCPVehicleCommAdapter
   }
 
   private CompletableFuture<Integer> addDelayAndReadRegister(boolean currentValue) {
-    try {
-      Thread.sleep(200);
-    }
-    catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      logError("Failed to sleep thread: ", e);
-      updateWriteModbusInfo(writeModbusMapHeartbeat, currentValue ? 1 : 0);
-      return CompletableFuture.completedFuture(-1);
-    }
-    return readSingleRegister(100);
+    return CompletableFuture.supplyAsync(() -> {
+      try {
+        Thread.sleep(200);
+      }
+      catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        LOG.warning("Failed to sleep thread: " + e.getMessage());
+        return -1; // 或者其他表示錯誤的值
+      }
+      return getReadModbusInfo(readModbusMapHeartbeat);
+    }, customScheduledExecutor);
   }
 
   private void handleHeartbeatValueMismatch(boolean currentValue, int value) {
@@ -418,6 +497,13 @@ public class ModbusTCPVehicleCommAdapter
         .isCancelled()) {
       LOG.info("Stop Catch WriteSingleRegister.");
       catchWriteMultipleRegistersFuture.cancel(true);
+    }
+  }
+
+  private void stopCatchReadSingleRegister() {
+    if (catchReadSingleRegisterFuture != null && !catchReadSingleRegisterFuture.isCancelled()) {
+      LOG.info("Stop Catch ReadSingleRegister.");
+      catchReadSingleRegisterFuture.cancel(true);
     }
   }
 
@@ -540,6 +626,7 @@ public class ModbusTCPVehicleCommAdapter
         });
     stopErrorCode();
     stopCatchWriteSingleRegister();
+    stopCatchReadSingleRegister();
     stopHeartBeat()
         .thenRun(() -> LOG.info("Heart Beat updates stopped successfully"))
         .exceptionally(ex -> {
@@ -630,21 +717,35 @@ public class ModbusTCPVehicleCommAdapter
   }
 
   private CompletableFuture<Boolean> checkVehicleStatus() {
-    return readSingleRegister(114)
-        .thenCombine(
-            readSingleRegister(115), (value114, value115) -> isAutoModeEnabled(114, value114)
-                && isAutoModeEnabled(115, value115)
-        )
-        .thenCombine(
-            readSingleRegister(105), (previousResult, value105) -> previousResult && isValidValue(
-                105, value105
-            )
-        )
-        .thenCombine(
-            readSingleRegister(106), (previousResult, value106) -> previousResult && isValidValue(
-                106, value106
+    return CompletableFuture.supplyAsync(() -> {
+      boolean isVehicleModeAuto = getReadModbusInfo(readModbusMapVehicleMode) == 2;
+      boolean isLiftModeAuto = getReadModbusInfo(readModbusMapLiftMode) == 2;
+      boolean isVehicleStatusValid = isValidValue(
+          105, getReadModbusInfo(readModbusMapVehicleStatus)
+      );
+      boolean isLiftStatusValid = isValidValue(106, getReadModbusInfo(readModbusMapLiftStatus));
+
+      if (!isVehicleModeAuto) {
+        LOG.warning("Vehicle is Not Auto, Value：" + getReadModbusInfo(readModbusMapVehicleMode));
+      }
+      if (!isLiftModeAuto) {
+        LOG.warning("Lift is Not Auto, Value：：" + getReadModbusInfo(readModbusMapLiftMode));
+      }
+      if (!isVehicleStatusValid) {
+        LOG.warning(
+            "Vehicle current status is running, Value：" + getReadModbusInfo(
+                readModbusMapVehicleStatus
             )
         );
+      }
+      if (!isLiftStatusValid) {
+        LOG.warning(
+            "Lift current status is running, Value：" + getReadModbusInfo(readModbusMapLiftStatus)
+        );
+      }
+
+      return isVehicleModeAuto && isLiftModeAuto && isVehicleStatusValid && isLiftStatusValid;
+    });
   }
 
   private boolean isAutoModeEnabled(int register, int value) {
@@ -662,9 +763,8 @@ public class ModbusTCPVehicleCommAdapter
       LOG.warning(
           String.format("Register %d has invalid value: %d. Expected 0 or 2.", register, value)
       );
-      return false;
     }
-    return true;
+    return value == 0 || value == 2;
   }
 
   private CompletableFuture<Boolean> checkLocationStatus(MovementCommand newCommand) {
@@ -1144,6 +1244,36 @@ public class ModbusTCPVehicleCommAdapter
   }
 
   /**
+   * Update Catch Read Single.
+   *
+   * @param key The Write Map Key.
+   * @param value The Write Map value.
+   */
+
+  public void updateReadModbusInfo(String key, int value) {
+    AtomicInteger atomicValue = readModbusMap.get(key);
+    if (atomicValue == null) {
+      throw new NullPointerException("Update read status map value is null");
+    }
+    atomicValue.set(value);
+  }
+
+  /**
+   * Get Catch Read Single.
+   *
+   * @param key The Write Map Key.
+   */
+
+  public int getReadModbusInfo(String key) {
+    AtomicInteger value = readModbusMap.get(key);
+    if (value == null) {
+      throw new NullPointerException("Get read status map value is null");
+    }
+
+    return value.get();
+  }
+
+  /**
    * Update Catch Write Single.
    *
    * @param key The Write Map Key.
@@ -1156,6 +1286,30 @@ public class ModbusTCPVehicleCommAdapter
       throw new NullPointerException("Update write status map value is null");
     }
     atomicValue.set(value);
+  }
+
+  /**
+   * Get Catch Read Map Vehicle Status Key.
+   */
+
+  public String getVehicleStatusReadModbusMapKey() {
+    return readModbusMapVehicleStatus;
+  }
+
+  /**
+   * Get Catch Read Map Lift Status Key.
+   */
+
+  public String getLiftStatusReadModbusMapKey() {
+    return readModbusMapLiftStatus;
+  }
+
+  /**
+   * Get Catch Read Map Loading Status Key.
+   */
+
+  public String getLoadingStatusReadModbusMapKey() {
+    return readModbusMapLoadingStatus;
   }
 
   /**
@@ -1297,23 +1451,23 @@ public class ModbusTCPVehicleCommAdapter
         });
   }
 
-  CompletableFuture<Integer> readSingleRegister(int address) {
-    ReadInputRegistersRequest request = new ReadInputRegistersRequest(address, 1);
+  private CompletableFuture<Map<Integer, Integer>> readSingleRegister(int address, int quantity) {
+    ReadInputRegistersRequest request = new ReadInputRegistersRequest(address, quantity);
     return sendModbusRequest(request)
         .thenApply(response -> {
+          Map<Integer, Integer> result = new HashMap<>();
           if (response instanceof ReadInputRegistersResponse readResponse) {
-            ByteBuf responseBuffer = null;
-            try {
-              responseBuffer = readResponse.getRegisters();
-              return responseBuffer.readUnsignedShort();
+            ByteBuf responseBuffer = readResponse.getRegisters();
+            for (int i = 0; i < quantity; i++) {
+              int value = responseBuffer.readUnsignedShort();
+              result.put(address + i, value);
+              //LOG.info(String.format("READ ADDRESS %d GOT %d", address + i, value));
             }
-            finally {
-              if (responseBuffer != null) {
-                responseBuffer.release();
-              }
+            if (responseBuffer != null && responseBuffer.refCnt() > 0) {
+              responseBuffer.release();
             }
+            return result;
           }
-
           throw new RuntimeException("Invalid response type");
         });
   }
@@ -1510,7 +1664,7 @@ public class ModbusTCPVehicleCommAdapter
             LOG.info("Successfully connected to Modbus TCP server");
             getProcessModel().setCommAdapterConnected(true);
             startCatchWriteSingleRegister();
-
+            startCatchReadSingleRegister();
 //            startHeartbeat();
             //startErrorCode();
             LOG.warning("Starting sending heart bit.");
@@ -1843,18 +1997,20 @@ public class ModbusTCPVehicleCommAdapter
       if (!running.get()) {
         return;
       }
-      readSingleRegister(POSITION_REGISTER_ADDRESS)
-          .thenAccept(this::processPositionUpdate)
-          .exceptionally(ex -> {
-            LOG.warning(
-                String.format(
-                    "%s: Failed to update position: %s",
-                    vehicle.getName(),
-                    ex.getMessage()
-                )
-            );
-            return null;
-          });
+
+      try {
+        int stationMark = getReadModbusInfo(readModbusMapMarkNo);
+        processPositionUpdate(stationMark);
+      }
+      catch (Exception ex) {
+        LOG.warning(
+            String.format(
+                "%s: Failed to update position: %s",
+                vehicle.getName(),
+                ex.getMessage()
+            )
+        );
+      }
     }
 
     private void processPositionUpdate(long stationMark) {

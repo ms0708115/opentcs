@@ -77,27 +77,18 @@ public class MovementHandler {
   }
 
   private void checkVehicleStatus() {
-    CompletableFuture<Integer> vehicleStatusFuture = adapter.readSingleRegister(105);
-    CompletableFuture<Integer> liftStatusFuture = adapter.readSingleRegister(106);
-    CompletableFuture<Integer> loadStatusFuture = adapter.readSingleRegister(107);
+    int vehicleStatus = adapter.getReadModbusInfo(adapter.getVehicleStatusReadModbusMapKey());
+    int liftStatus = adapter.getReadModbusInfo(adapter.getLiftStatusReadModbusMapKey());
+    int loadStatus = adapter.getReadModbusInfo(adapter.getLoadingStatusReadModbusMapKey());
 
-    CompletableFuture.allOf(vehicleStatusFuture, liftStatusFuture, loadStatusFuture)
-        .thenCompose(v -> CompletableFuture.supplyAsync(() -> {
-          int vehicleStatus = vehicleStatusFuture.join();
-          int liftStatus = liftStatusFuture.join();
-          int loadStatus = loadStatusFuture.join();
-
-          return new int[]{vehicleStatus, liftStatus, loadStatus};
-        }, executor))
-        .thenAccept(statuses -> {
-          updateVehicleStatus(
-              statuses[0], statuses[1], statuses[2], adapter.getProcessModel().getPosition()
-          );
-        })
-        .exceptionally(ex -> {
-          LOG.severe("Failed to read vehicle status: " + ex.getMessage());
-          return null;
-        });
+    try {
+      updateVehicleStatus(
+          vehicleStatus, liftStatus, loadStatus, adapter.getProcessModel().getPosition()
+      );
+    }
+    catch (Exception ex) {
+      LOG.severe("Failed to read vehicle status: " + ex.getMessage());
+    }
   }
 
   private void updateVehicleStatus(
