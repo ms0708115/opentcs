@@ -263,7 +263,7 @@ public class ModbusTCPVehicleCommAdapter
 
   private boolean toggleHeartbeatAndRegisterWriting() {
     boolean currentValue = heartBeatToggle.getAndSet(!heartBeatToggle.get());
-    writeSingleRegister(500, currentValue ? 1 : 0);
+    writeSingleRegister(100, currentValue ? 1 : 0);
     return currentValue;
   }
 
@@ -928,9 +928,10 @@ public class ModbusTCPVehicleCommAdapter
         .equals("Point-0013 --- Point-0017")) {
       obstacleSensor = 1;
     }
+    else if (speedLevel == 5) {
+      obstacleSensor = 3;
+    }
     else {
-      // TODO: make it 2 after TOYO fix obstacle sensor.
-//      obstacleSensor = 1;
       obstacleSensor = 2;
     }
     String command = cmd.getOperation();
@@ -1352,6 +1353,8 @@ public class ModbusTCPVehicleCommAdapter
             this.isConnected = true;
             LOG.info("Successfully connected to Modbus TCP server");
             getProcessModel().setCommAdapterConnected(true);
+
+            // TODO: open it back after merging cache version of Sean
 //            startHeartbeat();
 //            LOG.warning("Starting sending heart bit.");
           })
