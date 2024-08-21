@@ -203,7 +203,16 @@ public class MovementHandler {
     }
     if (this.isRunnung && this.setStop) {
       LOG.warning("SET 105 TO STOP (0)");
-      adapter.writeSingleRegister(105, 0);
+      CompletableFuture<Void> writeFuture = adapter.writeSingleRegister(105, 0)
+          .thenRun(() -> {
+            LOG.info("Successfully set 105 to stop (0)");
+            this.setStop = false;
+          })
+          .exceptionally(ex -> {
+            LOG.severe("Failed to set 105 to stop (0): " + ex.getMessage());
+            return null;
+          });
+//      adapter.writeSingleRegister(105, 0);
       setStop = false;
     }
     boolean liftState = (loadStatus == 1);
