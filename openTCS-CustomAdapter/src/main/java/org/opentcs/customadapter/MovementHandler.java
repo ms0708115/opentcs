@@ -41,10 +41,6 @@ public class MovementHandler {
     this.setStop = true;
   }
 
-  public boolean getIsRunning() {
-    return this.isRunnung;
-  }
-
   /**
    * Starts monitoring and executing a list of movement commands.
    *
@@ -54,15 +50,19 @@ public class MovementHandler {
     running.set(true);
 
     if (monitoringFuture != null && !monitoringFuture.isDone()) {
-      LOG.info("Cancelling the old monitoring task");
+      LOG.info(
+          adapter.getProcessModel().getName() + ": " +
+              String.format(
+                  "%s: Cancelling the old monitoring task", adapter.getProcessModel().getName()
+              )
+      );
       monitoringFuture.cancel(true);
     }
 
     pendingCommands = new ArrayList<>(commands);
-//    LOG.info(String.format("SIZE OF pendingCommands: %d", pendingCommands.size()));
     currentCommandIndex = 0;
 
-    monitoringFuture = adapter.getScheduledExecutorService().scheduleAtFixedRate(() -> {
+    monitoringFuture = adapter.getScheduledExecutorService().scheduleWithFixedDelay(() -> {
       if (!running.get() || Thread.currentThread().isInterrupted()) {
         shutdownLatch.countDown();
         return;
@@ -71,7 +71,10 @@ public class MovementHandler {
         checkVehicleStatus();
       }
       catch (Exception e) {
-        LOG.severe("Error in checkVehicleStatus: " + e.getMessage());
+        LOG.severe(
+            adapter.getProcessModel().getName() + ": "
+                + "Error in checkVehicleStatus: " + e.getMessage()
+        );
       }
     }, 0, 1000, TimeUnit.MILLISECONDS);
   }
@@ -95,7 +98,10 @@ public class MovementHandler {
           );
         })
         .exceptionally(ex -> {
-          LOG.severe("Failed to read vehicle status: " + ex.getMessage());
+          LOG.severe(
+              adapter.getProcessModel().getName() + ": Failed to read vehicle status: " + ex
+                  .getMessage()
+          );
           return null;
         });
   }
@@ -104,7 +110,8 @@ public class MovementHandler {
       int vehicleStatus, int liftStatus, int loadStatus, String currentPosition
   ) {
     LOG.info(
-        "Updating vehicle status: vehicleStatus=" + vehicleStatus + ", liftStatus=" + liftStatus
+        adapter.getProcessModel().getName() + ": " +
+            "Updating vehicle status: vehicleStatus=" + vehicleStatus + ", liftStatus=" + liftStatus
             + ", loadStatus=" + loadStatus
             + ", currentPosition=" + currentPosition
     );
@@ -118,46 +125,33 @@ public class MovementHandler {
       if (hasReachedDestination(vehicleStatus, currentCommand, currentPosition) &&
           isOperationCompleted(currentCommand, liftStatus, loadStatus)) {
         LOG.info(
-            String.format(
-                "CURRENT LOCATION MATCH THE DESTINATION AND OPERATION COMPLETED: %s",
-                currentPosition
-            )
+            adapter.getProcessModel().getName() + ": " +
+                String.format(
+                    "CURRENT LOCATION MATCH THE DESTINATION AND OPERATION COMPLETED: %s",
+                    currentPosition
+                )
         );
         currentCommandIndex++;
         if (currentCommandIndex >= pendingCommands.size()) {
-          LOG.info("All commands completed");
-          adapter.getPositionUpdater().stopPositionUpdates()
-              .thenRun(() -> {
-                LOG.info("Position updates stopped successfully");
-                LOG.info(
-                    String.format("Vehicle %s set to IDLE", adapter.getProcessModel().getName())
-                );
-                if (adapter.getProcessModel().getState().equals(Vehicle.State.IDLE)) {
-                  stopMonitoring()
-                      .thenRun(() -> LOG.info("Monitoring updates stopped successfully"))
-                      .exceptionally(ex -> {
-                        LOG.severe("Error stopping Monitoring updates: " + ex.getMessage());
-                        return null;
-                      });
-                }
-
-              })
-              .exceptionally(ex -> {
-                LOG.severe("Error stopping Monitoring updates: " + ex.getMessage());
-                return null;
-              });
+          LOG.info(
+              adapter.getProcessModel().getName() + ": " +
+                  "All commands completed"
+          );
+          resetMonitorParameter();
         }
+        this.setStop = true;
         adapter.getProcessModel().commandExecuted(currentCommand);
       }
       else {
         LOG.info(
-            String.format(
-                "VEHICLE HAS NOT COMPLETED THE COMMAND, "
-                    + "EXPECT: %s, CURRENTLY AT: %s, OPERATION: %s",
-                currentCommand.getStep().getDestinationPoint().getName(),
-                currentPosition,
-                currentCommand.getOperation()
-            )
+            adapter.getProcessModel().getName() + ": " +
+                String.format(
+                    "VEHICLE HAS NOT COMPLETED THE COMMAND, "
+                        + "EXPECT: %s, CURRENTLY AT: %s, OPERATION: %s",
+                    currentCommand.getStep().getDestinationPoint().getName(),
+                    currentPosition,
+                    currentCommand.getOperation()
+                )
         );
       }
     }
@@ -201,7 +195,8 @@ public class MovementHandler {
         this.isRunnung = false;
       }
     }
-    if (this.isRunnung && this.setStop) {
+    if ((this.isRunnung && this.setStop) ||
+        (pendingCommands.get(currentCommandIndex).getStep().getSourcePoint() == null && this.setStop)) {
       LOG.warning("SET 105 TO STOP (0)");
       adapter.updateWriteModbusInfo(adapter.getVehicleCommandWriteModbusMapKey(), 0);
       setStop = false;
@@ -218,11 +213,12 @@ public class MovementHandler {
       int vehicleStatus, MovementCommand command, String currentPosition
   ) {
     LOG.info(
-        String.format(
-            "CHECKING BETWEEN: %s & %s",
-            command.getStep().getDestinationPoint().getName(),
-            currentPosition
-        )
+        adapter.getProcessModel().getName() + ": " +
+            String.format(
+                "CHECKING BETWEEN: %s & %s",
+                command.getStep().getDestinationPoint().getName(),
+                currentPosition
+            )
     );
     if (command.isFinalMovement()) {
       return (command.getStep().getDestinationPoint().getName().equals(currentPosition)
@@ -251,10 +247,7 @@ public class MovementHandler {
 
   public CompletableFuture<Void> stopMonitoring() {
     return CompletableFuture.runAsync(() -> {
-      running.set(false);
-      pendingCommands.clear();
-      currentCommandIndex = 0;
-      this.setStop = true;
+      resetMonitorParameter();
 
       if (monitoringFuture != null) {
         monitoringFuture.cancel(true);
@@ -271,5 +264,13 @@ public class MovementHandler {
 
       LOG.warning("MOVEMENT HANDLER HAS BEEN STOPPED");
     }, executor);
+  }
+
+  private void resetMonitorParameter() {
+    LOG.info(adapter.getProcessModel().getName() + "Monitor has been RESET.");
+    running.set(false);
+    pendingCommands.clear();
+    currentCommandIndex = 0;
+    this.setStop = true;
   }
 }
