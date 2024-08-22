@@ -20,7 +20,8 @@ public class PeripheralDeviceConfigurationProvider {
       PeripheralDeviceConfigurationProvider.class.getName()
   );
   private static final String CONFIG_FILE
-      = "C:\\Users\\user\\Desktop\\minioht\\config\\peripheral_config.json";
+      = "D:\\ATC\\minioht\\config\\peripheral_config.json";
+//      = "C:\\Users\\user\\Desktop\\minioht\\config\\peripheral_config.json";
 
   private final Map<String, PeripheralDeviceConfiguration> configurations = new HashMap<>();
 
