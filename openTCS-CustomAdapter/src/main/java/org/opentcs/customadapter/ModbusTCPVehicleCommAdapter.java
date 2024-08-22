@@ -236,8 +236,8 @@ public class ModbusTCPVehicleCommAdapter
       return;
     }
     super.terminate();
-    List<Runnable> pedningTasks = customScheduledExecutor.shutdownNow();
-    LOG.warning(String.format("Cleared execution in queue: %d", pedningTasks.size()));
+//    List<Runnable> pedningTasks = customScheduledExecutor.shutdownNow();
+//    LOG.warning(String.format("Cleared execution in queue: %d", pedningTasks.size()));
     positionUpdater.stopPositionUpdates()
         .thenRun(() -> LOG.info("Position updates stopped successfully"))
         .exceptionally(ex -> {
@@ -294,7 +294,7 @@ public class ModbusTCPVehicleCommAdapter
   private void startErrorCode() {
     errorCodeFuture = customScheduledExecutor.scheduleWithFixedDelay(
         this::updateErrorCode,
-        0, 500, TimeUnit.MILLISECONDS
+        0, 1000, TimeUnit.MILLISECONDS
     );
   }
 
@@ -314,7 +314,7 @@ public class ModbusTCPVehicleCommAdapter
   }
 
   private void processErrorCodes(int vehicleErrorCode, int hoistErrorCode) {
-    LOG.info("Vehicle: " + vehicleErrorCode + ", Hoist: " + hoistErrorCode);
+//    LOG.info("Vehicle: " + vehicleErrorCode + ", Hoist: " + hoistErrorCode);
     int newErrorCode = determineNewErrorCode(vehicleErrorCode, hoistErrorCode);
     if (isExistingErrorCode(newErrorCode)) {
       return;
@@ -698,8 +698,9 @@ public class ModbusTCPVehicleCommAdapter
     if (isCorrectLocation(newCommand) && hasLoadingStatusProperty(location)) {
       String operation = newCommand.getFinalOperation();
       String loadingStatus = location.getProperty("LoadingStatus");
-      return (("Load".equals(operation) && "Load".equals(loadingStatus)) ||
-          ("Unload".equals(operation) && "Unload".equals(loadingStatus)));
+      return true;
+//      return (("Load".equals(operation) && "Load".equals(loadingStatus)) ||
+//          ("Unload".equals(operation) && "Unload".equals(loadingStatus)));
     }
     else {
       LOG.warning(
@@ -709,7 +710,8 @@ public class ModbusTCPVehicleCommAdapter
               newCommand.getFinalOperation()
           )
       );
-      return false;
+//      return false;
+      return true;
     }
   }
 
@@ -1512,7 +1514,7 @@ public class ModbusTCPVehicleCommAdapter
             startCatchWriteSingleRegister();
 
 //            startHeartbeat();
-            //startErrorCode();
+//            startErrorCode();
             LOG.warning("Starting sending heart bit.");
           })
           .exceptionally(ex -> {
@@ -1868,7 +1870,8 @@ public class ModbusTCPVehicleCommAdapter
     private String convertToOpenTcsPosition(long position) {
       LOG.info(
           String.format(
-              "GOT POSITION FROM MAP: %s",
+              getProcessModel().getName() +
+                  "GOT POSITION FROM MAP: %s",
               getPositionFromMap(getPositionFromStationModbusCommand(position))
           )
       );
