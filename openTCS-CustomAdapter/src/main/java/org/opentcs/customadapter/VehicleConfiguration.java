@@ -1,7 +1,7 @@
 package org.opentcs.customadapter;
 
 public record VehicleConfiguration(
-    String currentStrategy, String host, int port, String initialPose
+    String currentStrategy, String host, int port, String initialPose, int loadStatus
 ) {
   public VehicleConfiguration {
     if (port < 0 || port > 65535) {
