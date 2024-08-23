@@ -196,7 +196,8 @@ public class MovementHandler {
       }
     }
     if ((this.isRunnung && this.setStop) ||
-        (pendingCommands.get(currentCommandIndex).getStep().getSourcePoint() == null && this.setStop)) {
+        (pendingCommands.get(currentCommandIndex).getStep().getSourcePoint() == null
+            && this.setStop)) {
       LOG.warning("SET 105 TO STOP (0)");
       adapter.updateWriteModbusInfo(adapter.getVehicleCommandWriteModbusMapKey(), 0);
       setStop = false;
