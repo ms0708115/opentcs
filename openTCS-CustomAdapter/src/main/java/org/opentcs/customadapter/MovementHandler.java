@@ -93,7 +93,8 @@ public class MovementHandler {
       LOG.severe(
           adapter.getProcessModel().getName() + ": Failed to read vehicle status: " + ex
               .getMessage()
-      );    }
+      );
+    }
   }
 
   private void updateVehicleStatus(
@@ -188,6 +189,15 @@ public class MovementHandler {
     if ((this.isRunnung && this.setStop) ||
         (pendingCommands.get(currentCommandIndex).getStep().getSourcePoint() == null
             && this.setStop)) {
+      try {
+        if (pendingCommands.get(currentCommandIndex).getStep().getSourcePoint() == null) {
+          Thread.sleep(300);
+        }
+      }
+      catch (Exception ex) {
+        LOG.warning("Thread Sleep Fail");
+      }
+
       LOG.warning("SET 105 TO STOP (0)");
       adapter.updateWriteModbusInfo(adapter.getVehicleCommandWriteModbusMapKey(), 0);
       setStop = false;

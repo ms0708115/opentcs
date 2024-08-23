@@ -8,12 +8,6 @@ import com.google.inject.assistedinject.Assisted;
 import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.logging.Logger;
-import javax.swing.BoxLayout;
-import javax.swing.JComboBox;
-import javax.swing.JLabel;
-import javax.swing.JOptionPane;
-import javax.swing.JPanel;
-import javax.swing.JTextField;
 import org.opentcs.components.kernel.services.PeripheralService;
 import org.opentcs.components.kernel.services.PlantModelService;
 import org.opentcs.components.kernel.services.VehicleService;
@@ -60,9 +54,7 @@ public class CommunicationStrategy
   Vehicle vehicle, PeripheralService peripheralService) {
     VehicleConfiguration config = configProvider.getConfiguration(vehicle.getName());
     if (config == null) {
-//      config = createConfigWithUserInput(vehicle);
-//      configProvider.setConfiguration(vehicle.getName(), config);
-      config = new VehicleConfiguration("ModbusTCP", "192.168.0.72", 502, "");
+      config = new VehicleConfiguration("ModbusTCP", "192.168.0.72", 502, "", 0);
       configProvider.setConfiguration(vehicle.getName(), config);
     }
 
@@ -75,67 +67,5 @@ public class CommunicationStrategy
 
     StrategyCreator creator = creatorProvider.get();
     return creator.createAdapter(vehicle, config, executor, plantModelService, peripheralService);
-  }
-
-  private VehicleConfiguration createConfigWithUserInput(Vehicle vehicle) {
-    String defaultHost = "localhost";
-    int defaultPort = 502;
-    String defaultStrategy = "ModbusTCP";
-    String defaultInitialPose = "";
-
-    JTextField hostField = new JTextField(defaultHost, 10);
-    JTextField portField = new JTextField(String.valueOf(defaultPort), 10);
-    JComboBox<String> strategyComboBox = new JComboBox<>(
-        strategyProviders.keySet().toArray(new String[0])
-    );
-    strategyComboBox.setSelectedItem(defaultStrategy);
-
-    JPanel panel = new JPanel();
-    panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-    panel.add(new JLabel("Host:"));
-    panel.add(hostField);
-    panel.add(new JLabel("Port:"));
-    panel.add(portField);
-    panel.add(new JLabel("Communication Strategy:"));
-    panel.add(strategyComboBox);
-
-    int result = JOptionPane.showConfirmDialog(
-        null, panel,
-        "Enter Configuration for " + vehicle.getName(), JOptionPane.OK_CANCEL_OPTION
-    );
-
-    String host;
-    int port;
-    String strategy;
-    String initialPose;
-
-    if (result == JOptionPane.OK_OPTION) {
-      initialPose = defaultInitialPose;
-      host = hostField.getText().isEmpty() ? defaultHost : hostField.getText();
-      try {
-        port = Integer.parseInt(portField.getText());
-        if (port < 0 || port > 65535) {
-          LOG.warning("Invalid port number. Using default port " + defaultPort);
-          port = defaultPort;
-        }
-      }
-      catch (NumberFormatException e) {
-        LOG.warning("Invalid port number. Using default port " + defaultPort);
-        port = defaultPort;
-      }
-      strategy = (String) strategyComboBox.getSelectedItem();
-      if (strategy == null || strategy.isEmpty()) {
-        strategy = defaultStrategy;
-      }
-    }
-    else {
-      // Use default values if user cancels
-      host = defaultHost;
-      port = defaultPort;
-      strategy = defaultStrategy;
-      initialPose = defaultInitialPose;
-    }
-
-    return new VehicleConfiguration(strategy, host, port, initialPose);
   }
 }
