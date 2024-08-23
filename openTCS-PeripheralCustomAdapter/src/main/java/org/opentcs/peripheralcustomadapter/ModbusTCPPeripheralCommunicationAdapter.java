@@ -294,11 +294,11 @@ public class ModbusTCPPeripheralCommunicationAdapter
           peripheralService.updateObjectProperty(location, "LoadingStatus", "UNKNOWN");
           LOG.info("Peripheral : " + location.getName() + ", Current Status :Unknown");
         }
-        if (newQuantityResult != oldQuantityResult) {
-          peripheralService.updateObjectProperty(
-              location, "Magazine_Quantity", String.valueOf(newQuantityResult)
-          );
-        }
+//        if (newQuantityResult != oldQuantityResult) {
+        peripheralService.updateObjectProperty(
+            location, "Magazine_Quantity", String.valueOf(newQuantityResult)
+        );
+//        }
 
         if (newStatusResult != oldStatusResult) {
           if (newStatusResult == 1) {

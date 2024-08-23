@@ -281,8 +281,8 @@ public class ModbusTCPVehicleCommAdapter
       return;
     }
     super.terminate();
-    List<Runnable> pedningTasks = customScheduledExecutor.shutdownNow();
-    LOG.warning(String.format("Cleared execution in queue: %d", pedningTasks.size()));
+//    List<Runnable> pedningTasks = customScheduledExecutor.shutdownNow();
+//    LOG.warning(String.format("Cleared execution in queue: %d", pedningTasks.size()));
     positionUpdater.stopPositionUpdates()
         .thenRun(() -> LOG.info("Position updates stopped successfully"))
         .exceptionally(ex -> {
@@ -376,7 +376,7 @@ public class ModbusTCPVehicleCommAdapter
   private void startErrorCode() {
     errorCodeFuture = customScheduledExecutor.scheduleWithFixedDelay(
         this::updateErrorCode,
-        0, 500, TimeUnit.MILLISECONDS
+        0, 1000, TimeUnit.MILLISECONDS
     );
   }
 
@@ -392,7 +392,7 @@ public class ModbusTCPVehicleCommAdapter
   }
 
   private void processErrorCodes(int vehicleErrorCode, int hoistErrorCode) {
-    LOG.info("Vehicle: " + vehicleErrorCode + ", Hoist: " + hoistErrorCode);
+//    LOG.info("Vehicle: " + vehicleErrorCode + ", Hoist: " + hoistErrorCode);
     int newErrorCode = determineNewErrorCode(vehicleErrorCode, hoistErrorCode);
     if (isExistingErrorCode(newErrorCode)) {
       return;
@@ -798,6 +798,7 @@ public class ModbusTCPVehicleCommAdapter
     if (isCorrectLocation(newCommand) && hasLoadingStatusProperty(location)) {
       String operation = newCommand.getFinalOperation();
       String loadingStatus = location.getProperty("LoadingStatus");
+//      return true;
       return (("Load".equals(operation) && "Load".equals(loadingStatus)) ||
           ("Unload".equals(operation) && "Unload".equals(loadingStatus)));
     }
@@ -810,6 +811,7 @@ public class ModbusTCPVehicleCommAdapter
           )
       );
       return false;
+//      return true;
     }
   }
 
@@ -960,6 +962,18 @@ public class ModbusTCPVehicleCommAdapter
     // Convert stationCommandsMap to ModbusCommand list
     for (Map.Entry<Long, Pair<CMD1, CMD2>> entry : stationCommandsMap.entrySet()) {
       long stationPosition = entry.getKey();
+      if (getProcessModel().getName().equals("SAA-mini-OHT-0001") && stationPosition == 109495) {
+        stationPosition = 109492;
+      }
+
+      if (stationPosition == 122355) {
+        if (getProcessModel().getName().equals("SAA-mini-OHT-0001")) {
+          stationPosition = 122353;
+        }
+        else if (getProcessModel().getName().equals("SAA-mini-OHT-0002")) {
+          stationPosition = 122357;
+        }
+      }
       Pair<CMD1, CMD2> cmds = entry.getValue();
       LOG.info(String.format("stationPosition: %d", stationPosition));
 
@@ -1666,7 +1680,7 @@ public class ModbusTCPVehicleCommAdapter
             startCatchWriteSingleRegister();
             startCatchReadSingleRegister();
 //            startHeartbeat();
-            //startErrorCode();
+//            startErrorCode();
             LOG.warning("Starting sending heart bit.");
           })
           .exceptionally(ex -> {
@@ -2024,7 +2038,8 @@ public class ModbusTCPVehicleCommAdapter
     private String convertToOpenTcsPosition(long position) {
       LOG.info(
           String.format(
-              "GOT POSITION FROM MAP: %s",
+              getProcessModel().getName() +
+                  "GOT POSITION FROM MAP: %s",
               getPositionFromMap(getPositionFromStationModbusCommand(position))
           )
       );
@@ -2036,7 +2051,16 @@ public class ModbusTCPVehicleCommAdapter
       if (index <= 0 || index > positionModbusCommand.size()) {
         throw new IllegalArgumentException("Index out of positionModbusCommand bounds");
       }
-      return positionModbusCommand.get((int) index - 1).value();
+      long tempPosition = positionModbusCommand.get((int) index - 1).value();
+      if (tempPosition == 109492) {
+        LOG.info("AT OHB POSITION");
+        tempPosition = 109495;
+      }
+      else if (tempPosition == 122353 || tempPosition == 122357) {
+        LOG.info("AT SIDEFORK POSITION");
+        tempPosition = 122355;
+      }
+      return tempPosition;
     }
 
     /**
