@@ -370,7 +370,7 @@ public class ModbusTCPVehicleCommAdapter
       catch (Exception e) {
         LOG.severe("Error in Catch Read Single Register: " + e.getMessage());
       }
-    }, 0, 100, TimeUnit.MILLISECONDS);
+    }, 0, 150, TimeUnit.MILLISECONDS);
   }
 
   private void startErrorCode() {
@@ -563,9 +563,9 @@ public class ModbusTCPVehicleCommAdapter
 
   private void handleVehicleStateChange(Vehicle.State newState) {
     getProcessModel().setState(newState);
-    if (newState == Vehicle.State.IDLE) {
-      checkAndHandleTrafficControl();
-    }
+//    if (newState == Vehicle.State.IDLE) {
+//      checkAndHandleTrafficControl();
+//    }
   }
 
   private void checkAndHandleTrafficControl() {
@@ -599,6 +599,16 @@ public class ModbusTCPVehicleCommAdapter
     initialPose = configProvider.getConfiguration(vehicle.getName()).initialPose();
     (getExecutor()).submit(() -> getProcessModel().setPosition(initialPose));
     getProcessModel().setState(Vehicle.State.IDLE);
+
+    int loadStatus = configProvider.getConfiguration(vehicle.getName()).loadStatus();
+    List<LoadHandlingDevice> devices = new ArrayList<>();
+    if (loadStatus == 0) {
+      devices.add(new LoadHandlingDevice("default", false));
+    }
+    else if (loadStatus == 1) {
+      devices.add(new LoadHandlingDevice("default", true));
+    }
+    getProcessModel().setLoadHandlingDevices(devices);
   }
 
   /**
@@ -789,6 +799,10 @@ public class ModbusTCPVehicleCommAdapter
   private boolean isLocationStatusValid(MovementCommand newCommand, Location location) {
     if (newCommand.getFinalDestinationLocation() != null && newCommand.getFinalDestinationLocation()
         .getName().contains("TempPark")) {
+      return true;
+    }
+    if (newCommand.getFinalDestinationLocation() != null &&
+        newCommand.getFinalDestinationLocation().getName().equals("Magazine_loadport")) {
       return true;
     }
     if (newCommand.getFinalOperation().equals("NOP")) {
@@ -1766,7 +1780,7 @@ public class ModbusTCPVehicleCommAdapter
 
   private ModbusResponse sendRequest(ModbusRequest request) {
     try {
-      return master.sendRequest(request, 0).get(500, TimeUnit.MILLISECONDS);
+      return master.sendRequest(request, 0).get(3000, TimeUnit.MILLISECONDS);
     }
     catch (InterruptedException e) {
       Thread.currentThread().interrupt();
@@ -1949,6 +1963,9 @@ public class ModbusTCPVehicleCommAdapter
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final CountDownLatch shutdownLatch = new CountDownLatch(1);
 
+
+    private int oldMarkNo = 0;
+
     /**
      * The PositionUpdater class is responsible for updating the position of a vehicle.
      * It schedules regular updates of the vehicle position using a fixed rate.
@@ -2014,6 +2031,11 @@ public class ModbusTCPVehicleCommAdapter
 
       try {
         int stationMark = getReadModbusInfo(readModbusMapMarkNo);
+
+        if (oldMarkNo != stationMark) {
+          oldMarkNo = stationMark;
+          LOG.info("ModbusMapMarkNo : " + stationMark);
+        }
         processPositionUpdate(stationMark);
       }
       catch (Exception ex) {
