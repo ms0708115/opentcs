@@ -698,9 +698,9 @@ public class ModbusTCPVehicleCommAdapter
     if (isCorrectLocation(newCommand) && hasLoadingStatusProperty(location)) {
       String operation = newCommand.getFinalOperation();
       String loadingStatus = location.getProperty("LoadingStatus");
-      return true;
-//      return (("Load".equals(operation) && "Load".equals(loadingStatus)) ||
-//          ("Unload".equals(operation) && "Unload".equals(loadingStatus)));
+//      return true;
+      return (("Load".equals(operation) && "Load".equals(loadingStatus)) ||
+          ("Unload".equals(operation) && "Unload".equals(loadingStatus)));
     }
     else {
       LOG.warning(
@@ -710,8 +710,8 @@ public class ModbusTCPVehicleCommAdapter
               newCommand.getFinalOperation()
           )
       );
-//      return false;
-      return true;
+      return false;
+//      return true;
     }
   }
 
@@ -862,6 +862,18 @@ public class ModbusTCPVehicleCommAdapter
     // Convert stationCommandsMap to ModbusCommand list
     for (Map.Entry<Long, Pair<CMD1, CMD2>> entry : stationCommandsMap.entrySet()) {
       long stationPosition = entry.getKey();
+      if (getProcessModel().getName().equals("SAA-mini-OHT-0001") && stationPosition == 109495) {
+        stationPosition = 109492;
+      }
+
+      if (stationPosition == 122355) {
+        if (getProcessModel().getName().equals("SAA-mini-OHT-0001")) {
+          stationPosition = 122353;
+        }
+        else if (getProcessModel().getName().equals("SAA-mini-OHT-0002")) {
+          stationPosition = 122357;
+        }
+      }
       Pair<CMD1, CMD2> cmds = entry.getValue();
       LOG.info(String.format("stationPosition: %d", stationPosition));
 
@@ -1883,7 +1895,16 @@ public class ModbusTCPVehicleCommAdapter
       if (index <= 0 || index > positionModbusCommand.size()) {
         throw new IllegalArgumentException("Index out of positionModbusCommand bounds");
       }
-      return positionModbusCommand.get((int) index - 1).value();
+      long tempPosition = positionModbusCommand.get((int) index - 1).value();
+      if (tempPosition == 109492) {
+        LOG.info("AT OHB POSITION");
+        tempPosition = 109495;
+      }
+      else if (tempPosition == 122353 || tempPosition == 122357) {
+        LOG.info("AT SIDEFORK POSITION");
+        tempPosition = 122355;
+      }
+      return tempPosition;
     }
 
     /**
