@@ -264,7 +264,7 @@ public class ModbusTCPVehicleCommAdapter
     );
     getProcessModel().setMaxFwdVelocity(vehicle.getMaxVelocity());
     initializePositionMap();
-    this.positionUpdater = new PositionUpdater(getExecutor());
+    this.positionUpdater = new PositionUpdater(getExecutor(), this.configProvider);
     this.movementHandler = new MovementHandler(getExecutor(), this);
 
     initialized = true;
@@ -942,12 +942,13 @@ public class ModbusTCPVehicleCommAdapter
     convertMovementCommandsToModbusCommands(allMovementCommands);
     writeAllModbusCommands()
         .thenRun(() -> {
+          updateWriteModbusInfo(writeModbusMapVehicleCmd, 1);
           LOG.info("Starting Monitoring.");
           movementHandler.startMonitoring(allMovementCommands);
           LOG.info("Starting Positioning.");
           positionUpdater.startPositionUpdates();
           LOG.info("Starting Mission.");
-          updateWriteModbusInfo(writeModbusMapVehicleCmd, 1);
+
         })
         .exceptionally(ex -> {
           LOG.severe("Failed to write commands and start monitoring: " + ex.getMessage());
@@ -977,7 +978,7 @@ public class ModbusTCPVehicleCommAdapter
     for (Map.Entry<Long, Pair<CMD1, CMD2>> entry : stationCommandsMap.entrySet()) {
       long stationPosition = entry.getKey();
       if (getProcessModel().getName().equals("SAA-mini-OHT-0001") && stationPosition == 109495) {
-        stationPosition = 109492;
+        stationPosition = 109493;
       }
 
       if (stationPosition == 122355) {
@@ -1251,7 +1252,7 @@ public class ModbusTCPVehicleCommAdapter
 //      obstacleSensor = 1;
       obstacleSensor = 2;
     }
-    return new CMD1(getLiftCommand(cmd.getOperation()), getSpeedLevel(cmd), obstacleSensor, 0);
+    return new CMD1(getLiftCommand(cmd.getOperation()), 3, obstacleSensor, 0);
   }
 
   private CMD2 createOperationCMD2(MovementCommand cmd) {
@@ -1962,7 +1963,11 @@ public class ModbusTCPVehicleCommAdapter
     private String lastKnownPosition;
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final CountDownLatch shutdownLatch = new CountDownLatch(1);
-
+    private final VehicleConfigurationProvider configProvider;
+    private VehicleConfiguration oldConfig;
+    private VehicleConfiguration newConfig;
+    private String oldPosition = "";
+    private boolean oldLoadStatus = false;
 
     private int oldMarkNo = 0;
 
@@ -1978,9 +1983,13 @@ public class ModbusTCPVehicleCommAdapter
      *
      * @param executor The ScheduledExecutorService used to schedule position updates.
      */
-    public PositionUpdater(ScheduledExecutorService executor) {
+    public PositionUpdater(
+        ScheduledExecutorService executor,
+        VehicleConfigurationProvider configProvider
+    ) {
       this.executor = executor;
       this.lastKnownPosition = null;
+      this.configProvider = configProvider;
     }
 
     /**
@@ -2054,6 +2063,23 @@ public class ModbusTCPVehicleCommAdapter
       String openTcsPosition = convertToOpenTcsPosition(stationMark);
       Triple precisePosition = convertToPrecisePosition(currentPosition);
       getProcessModel().setPosition(openTcsPosition);
+      oldConfig = configProvider.getConfiguration(getProcessModel().getName());
+      Boolean newLoadStatus = getProcessModel().getLoadHandlingDevices().getFirst().isFull();
+
+      newConfig = new VehicleConfiguration(
+          oldConfig.currentStrategy(),
+          oldConfig.host(),
+          oldConfig.port(),
+          openTcsPosition,
+          newLoadStatus ? 1 : 0
+      );
+      if (!Objects.equals(oldPosition, openTcsPosition) || oldLoadStatus != newLoadStatus) {
+        configProvider.setConfiguration(getProcessModel().getName(), newConfig);
+        configProvider.saveConfigurations();
+        oldPosition = openTcsPosition;
+        oldLoadStatus = newLoadStatus;
+      }
+
       getProcessModel().setPrecisePosition(precisePosition);
     }
 
@@ -2074,7 +2100,7 @@ public class ModbusTCPVehicleCommAdapter
         throw new IllegalArgumentException("Index out of positionModbusCommand bounds");
       }
       long tempPosition = positionModbusCommand.get((int) index - 1).value();
-      if (tempPosition == 109492) {
+      if (tempPosition == 109493) {
         LOG.info("AT OHB POSITION");
         tempPosition = 109495;
       }

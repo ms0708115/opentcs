@@ -104,7 +104,6 @@ public class VehicleConfigurationProvider {
   public void saveConfigurations() {
     try (FileWriter writer = new FileWriter(CONFIG_FILE)) {
       new Gson().toJson(configurations, writer);
-      LOG.info("Configurations saved successfully.");
     }
     catch (IOException e) {
       LOG.log(Level.SEVERE, "Failed to save configurations", e);
