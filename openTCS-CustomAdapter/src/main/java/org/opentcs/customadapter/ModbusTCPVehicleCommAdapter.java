@@ -209,7 +209,7 @@ public class ModbusTCPVehicleCommAdapter
     this.currentTransportOrder = null;
     this.positionMap = new HashMap<>();
     this.peripheralService = peripheralService;
-    this.customScheduledExecutor = new ScheduledThreadPoolExecutor(4);
+    this.customScheduledExecutor = new ScheduledThreadPoolExecutor(5);
     ResourceLeakDetector.setLevel(ResourceLeakDetector.Level.ADVANCED);
     initializeStatusMap();
   }
@@ -989,6 +989,11 @@ public class ModbusTCPVehicleCommAdapter
           stationPosition = 122357;
         }
       }
+
+      if (getProcessModel().getName().equals("SAA-mini-OHT-0001") && stationPosition == 100940) {
+        stationPosition = 100937;
+      }
+
       Pair<CMD1, CMD2> cmds = entry.getValue();
       LOG.info(String.format("stationPosition: %d", stationPosition));
 
@@ -1695,7 +1700,7 @@ public class ModbusTCPVehicleCommAdapter
             startCatchWriteSingleRegister();
             startCatchReadSingleRegister();
 //            startHeartbeat();
-//            startErrorCode();
+            startErrorCode();
             LOG.warning("Starting sending heart bit.");
           })
           .exceptionally(ex -> {
@@ -2108,6 +2113,12 @@ public class ModbusTCPVehicleCommAdapter
         LOG.info("AT SIDEFORK POSITION");
         tempPosition = 122355;
       }
+
+      else if (tempPosition == 100937) {
+        LOG.info("AT EFEN POSITION");
+        tempPosition = 100940;
+      }
+
       return tempPosition;
     }
 
