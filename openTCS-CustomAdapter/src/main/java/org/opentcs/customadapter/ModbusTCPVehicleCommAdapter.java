@@ -686,13 +686,15 @@ public class ModbusTCPVehicleCommAdapter
   @Override
   public synchronized boolean enqueueCommand(MovementCommand newCommand) {
     requireNonNull(newCommand, "newCommand cannot be empty");
+    LOG.info("Entering enqueueCommand().");
     if (!canAcceptNextCommand()) {
-      positionUpdater.stopPositionUpdates()
-          .thenRun(() -> LOG.info("Position updates stopped successfully"))
-          .exceptionally(ex -> {
-            LOG.severe("Error stopping position updates: " + ex.getMessage());
-            return null;
-          });
+//      positionUpdater.stopPositionUpdates()
+//          .thenRun(() -> LOG.info("Position updates stopped successfully"))
+//          .exceptionally(ex -> {
+//            LOG.severe("Error stopping position updates: " + ex.getMessage());
+//            return null;
+//          });
+      LOG.severe("Command over default command capacity 1000.");
       return false;
     }
     checkTransportOrderAndLog(newCommand);
@@ -902,12 +904,12 @@ public class ModbusTCPVehicleCommAdapter
     if (currentTransportOrder == null || !currentTransportOrder.equals(
         newCommand.getTransportOrder()
     )) {
-      positionUpdater.stopPositionUpdates()
-          .thenRun(() -> LOG.info("Position updates stopped successfully"))
-          .exceptionally(ex -> {
-            LOG.severe("Error stopping position updates: " + ex.getMessage());
-            return null;
-          });
+//      positionUpdater.stopPositionUpdates()
+//          .thenRun(() -> LOG.info("Position updates stopped successfully"))
+//          .exceptionally(ex -> {
+//            LOG.severe("Error stopping position updates: " + ex.getMessage());
+//            return null;
+//          });
       LOG.info(
           String.format(
               "New Transport order (%s) has received.", newCommand.getTransportOrder().getName()
