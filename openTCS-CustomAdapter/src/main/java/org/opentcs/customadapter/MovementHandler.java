@@ -6,6 +6,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
@@ -25,6 +26,10 @@ public class MovementHandler {
   private final CountDownLatch shutdownLatch = new CountDownLatch(1);
   private boolean isRunnung;
   private boolean setStop;
+  private final ScheduledExecutorService movementScheduledExecutor;
+  private int vehicleStatus = 0;
+  private int liftStatus = 0;
+  private int loadStatus = 0;
 
   /**
    * Handles the movement of a vehicle by executing a list of commands.
@@ -39,6 +44,8 @@ public class MovementHandler {
     this.currentCommandIndex = 0;
     this.isRunnung = false;
     this.setStop = true;
+    this.movementScheduledExecutor = new ScheduledThreadPoolExecutor(2);
+
   }
 
   /**
@@ -61,8 +68,7 @@ public class MovementHandler {
 
     pendingCommands = new ArrayList<>(commands);
     currentCommandIndex = 0;
-
-    monitoringFuture = adapter.getScheduledExecutorService().scheduleWithFixedDelay(() -> {
+    monitoringFuture = movementScheduledExecutor.scheduleWithFixedDelay(() -> {
       if (!running.get() || Thread.currentThread().isInterrupted()) {
         shutdownLatch.countDown();
         return;
@@ -80,13 +86,11 @@ public class MovementHandler {
   }
 
   private void checkVehicleStatus() {
-    int vehicleStatus = adapter.getReadModbusInfo(adapter.getVehicleStatusReadModbusMapKey());
-    int liftStatus = adapter.getReadModbusInfo(adapter.getLiftStatusReadModbusMapKey());
-    int loadStatus = adapter.getReadModbusInfo(adapter.getLoadingStatusReadModbusMapKey());
-
+    this.vehicleStatus = adapter.getPositionUpdater().getVehicleStatus();
     try {
       updateVehicleStatus(
-          vehicleStatus, liftStatus, loadStatus, adapter.getProcessModel().getPosition()
+          this.vehicleStatus, this.liftStatus, this.loadStatus, adapter.getProcessModel()
+              .getPosition()
       );
     }
     catch (Exception ex) {
@@ -160,9 +164,13 @@ public class MovementHandler {
     }
 
     if (operation.equalsIgnoreCase("Load")) {
+      this.loadStatus = 1;
+      this.liftStatus = 2;
       return (liftStatus == 2 && loadStatus == 1);
     }
     else if (operation.equalsIgnoreCase("Unload")) {
+      this.loadStatus = 2;
+      this.liftStatus = 2;
       return (liftStatus == 2 && loadStatus == 2);
     }
     else {
@@ -202,6 +210,7 @@ public class MovementHandler {
       adapter.updateWriteModbusInfo(adapter.getVehicleCommandWriteModbusMapKey(), 0);
       setStop = false;
     }
+
     boolean liftState = (loadStatus == 1);
     adapter.getProcessModel().setState(vehicleState);
     // Update load handling devices based on lift status
@@ -228,23 +237,6 @@ public class MovementHandler {
     return (command.getStep().getDestinationPoint().getName().equals(currentPosition));
   }
 
-//  public void stopMonitoring() {
-//    running.set(false);
-//    if (monitoringFuture != null) {
-//      monitoringFuture.cancel(true);
-//    }
-//    executor.execute(() -> {
-//      try {
-//        shutdownLatch.await(5, TimeUnit.SECONDS);
-//      }
-//      catch (InterruptedException e) {
-//        Thread.currentThread().interrupt();
-//      }
-//    });
-//    pendingCommands.clear();
-//    currentCommandIndex = 0;
-//    LOG.warning("MOVEMENT HANDLER HAS BEEN STOPPED");
-//  }
 
   public CompletableFuture<Void> stopMonitoring() {
     return CompletableFuture.runAsync(() -> {
@@ -254,7 +246,7 @@ public class MovementHandler {
         monitoringFuture.cancel(true);
       }
       try {
-        if (!shutdownLatch.await(1, TimeUnit.SECONDS)) {
+        if (!shutdownLatch.await(5, TimeUnit.SECONDS)) {
           LOG.warning("Timeout waiting for position updates to stop");
         }
       }

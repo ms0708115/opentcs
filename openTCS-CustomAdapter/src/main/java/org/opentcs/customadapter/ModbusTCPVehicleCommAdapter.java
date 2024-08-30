@@ -136,7 +136,7 @@ public class ModbusTCPVehicleCommAdapter
   private MovementHandler movementHandler;
   private final PeripheralService peripheralService;
   private final VehicleConfigurationProvider configProvider;
-  private ScheduledExecutorService customScheduledExecutor;
+  private final ScheduledExecutorService customScheduledExecutor;
   private final AtomicBoolean heartBeatRunning = new AtomicBoolean(true);
   private final CountDownLatch heartShutdownLatch = new CountDownLatch(1);
 
@@ -171,6 +171,7 @@ public class ModbusTCPVehicleCommAdapter
   private final String readModbusMapMileageKilometer = "MileageKilometer";
   private final String readModbusMapVehicleErrorCode = "VehicleErrorCode";
   private final String readModbusMapLiftErrorCode = "LiftErrorCode";
+  private boolean isReachDestination = false;
 
   /**
    * A communication adapter for ModbusTCP-based vehicle communication.
@@ -209,7 +210,7 @@ public class ModbusTCPVehicleCommAdapter
     this.currentTransportOrder = null;
     this.positionMap = new HashMap<>();
     this.peripheralService = peripheralService;
-    this.customScheduledExecutor = new ScheduledThreadPoolExecutor(5);
+    this.customScheduledExecutor = new ScheduledThreadPoolExecutor(4);
     ResourceLeakDetector.setLevel(ResourceLeakDetector.Level.ADVANCED);
     initializeStatusMap();
   }
@@ -248,16 +249,9 @@ public class ModbusTCPVehicleCommAdapter
       return;
     }
     super.initialize();
-
     getProcessModel().setState(Vehicle.State.IDLE);
     LOG.warning("Device has been set to IDLE state");
-
-//    if (vehicle.getName().equals("SAA-mini-OHT-0001")) {
     (getExecutor()).submit(() -> getProcessModel().setPosition(initialPose));
-//    }
-//    else if (vehicle.getName().equals("SAA-mini-OHT-0002")) {
-//      (getExecutor()).submit(() -> getProcessModel().setPosition(initialPose));
-//    }
     LOG.info(String.format("Device has been set to %s", initialPose));
     getProcessModel().setLoadHandlingDevices(
         List.of(new LoadHandlingDevice(LHD_NAME, false))
@@ -266,7 +260,6 @@ public class ModbusTCPVehicleCommAdapter
     initializePositionMap();
     this.positionUpdater = new PositionUpdater(getExecutor(), this.configProvider);
     this.movementHandler = new MovementHandler(getExecutor(), this);
-
     initialized = true;
   }
 
@@ -281,8 +274,6 @@ public class ModbusTCPVehicleCommAdapter
       return;
     }
     super.terminate();
-//    List<Runnable> pedningTasks = customScheduledExecutor.shutdownNow();
-//    LOG.warning(String.format("Cleared execution in queue: %d", pedningTasks.size()));
     positionUpdater.stopPositionUpdates()
         .thenRun(() -> LOG.info("Position updates stopped successfully"))
         .exceptionally(ex -> {
@@ -292,12 +283,12 @@ public class ModbusTCPVehicleCommAdapter
     stopErrorCode();
     stopCatchWriteSingleRegister();
     stopCatchReadSingleRegister();
-    stopHeartBeat()
-        .thenRun(() -> LOG.info("Heart Beat updates stopped successfully"))
-        .exceptionally(ex -> {
-          LOG.severe("Error stopping Heart updates: " + ex.getMessage());
-          return null;
-        });
+//    stopHeartBeat()
+//        .thenRun(() -> LOG.info("Heart Beat updates stopped successfully"))
+//        .exceptionally(ex -> {
+//          LOG.severe("Error stopping Heart updates: " + ex.getMessage());
+//          return null;
+//        });
     movementHandler.stopMonitoring()
         .thenRun(() -> LOG.info("Monitoring updates stopped successfully"))
         .exceptionally(ex -> {
@@ -308,11 +299,7 @@ public class ModbusTCPVehicleCommAdapter
   }
 
   public PositionUpdater getPositionUpdater() {
-    return this.positionUpdater;
-  }
-
-  public ScheduledExecutorService getScheduledExecutorService() {
-    return this.customScheduledExecutor;
+    return positionUpdater;
   }
 
   private void startCatchWriteSingleRegister() {
@@ -688,12 +675,12 @@ public class ModbusTCPVehicleCommAdapter
     requireNonNull(newCommand, "newCommand cannot be empty");
     LOG.info("Entering enqueueCommand().");
     if (!canAcceptNextCommand()) {
-//      positionUpdater.stopPositionUpdates()
-//          .thenRun(() -> LOG.info("Position updates stopped successfully"))
-//          .exceptionally(ex -> {
-//            LOG.severe("Error stopping position updates: " + ex.getMessage());
-//            return null;
-//          });
+      positionUpdater.stopPositionUpdates()
+          .thenRun(() -> LOG.info("Position updates stopped successfully"))
+          .exceptionally(ex -> {
+            LOG.severe("Error stopping position updates: " + ex.getMessage());
+            return null;
+          });
       LOG.severe("Command over default command capacity 1000.");
       return false;
     }
@@ -730,33 +717,34 @@ public class ModbusTCPVehicleCommAdapter
 
   private CompletableFuture<Boolean> checkVehicleStatus() {
     return CompletableFuture.supplyAsync(() -> {
-      boolean isVehicleModeAuto = getReadModbusInfo(readModbusMapVehicleMode) == 2;
-      boolean isLiftModeAuto = getReadModbusInfo(readModbusMapLiftMode) == 2;
-      boolean isVehicleStatusValid = isValidValue(
-          105, getReadModbusInfo(readModbusMapVehicleStatus)
-      );
-      boolean isLiftStatusValid = isValidValue(106, getReadModbusInfo(readModbusMapLiftStatus));
-
-      if (!isVehicleModeAuto) {
-        LOG.warning("Vehicle is Not Auto, Value：" + getReadModbusInfo(readModbusMapVehicleMode));
-      }
-      if (!isLiftModeAuto) {
-        LOG.warning("Lift is Not Auto, Value：：" + getReadModbusInfo(readModbusMapLiftMode));
-      }
-      if (!isVehicleStatusValid) {
-        LOG.warning(
-            "Vehicle current status is running, Value：" + getReadModbusInfo(
-                readModbusMapVehicleStatus
-            )
-        );
-      }
-      if (!isLiftStatusValid) {
-        LOG.warning(
-            "Lift current status is running, Value：" + getReadModbusInfo(readModbusMapLiftStatus)
-        );
-      }
-
-      return isVehicleModeAuto && isLiftModeAuto && isVehicleStatusValid && isLiftStatusValid;
+      return true;
+//      boolean isVehicleModeAuto = getReadModbusInfo(readModbusMapVehicleMode) == 2;
+//      boolean isLiftModeAuto = getReadModbusInfo(readModbusMapLiftMode) == 2;
+//      boolean isVehicleStatusValid = isValidValue(
+//          105, getReadModbusInfo(readModbusMapVehicleStatus)
+//      );
+//      boolean isLiftStatusValid = isValidValue(106, getReadModbusInfo(readModbusMapLiftStatus));
+//
+//      if (!isVehicleModeAuto) {
+//        LOG.warning("Vehicle is Not Auto, Value：" + getReadModbusInfo(readModbusMapVehicleMode));
+//      }
+//      if (!isLiftModeAuto) {
+//        LOG.warning("Lift is Not Auto, Value：：" + getReadModbusInfo(readModbusMapLiftMode));
+//      }
+//      if (!isVehicleStatusValid) {
+//        LOG.warning(
+//            "Vehicle current status is running, Value：" + getReadModbusInfo(
+//                readModbusMapVehicleStatus
+//            )
+//        );
+//      }
+//      if (!isLiftStatusValid) {
+//        LOG.warning(
+//            "Lift current status is running, Value：" + getReadModbusInfo(readModbusMapLiftStatus)
+//        );
+//      }
+//
+//      return isVehicleModeAuto && isLiftModeAuto && isVehicleStatusValid && isLiftStatusValid;
     });
   }
 
@@ -781,9 +769,10 @@ public class ModbusTCPVehicleCommAdapter
 
   private CompletableFuture<Boolean> checkLocationStatus(MovementCommand newCommand) {
     return CompletableFuture.supplyAsync(() -> {
-      Location location = getLocationFromCommand(newCommand);
-      logLocationInfo(location);
-      return isLocationStatusValid(newCommand, location);
+      return true;
+//      Location location = getLocationFromCommand(newCommand);
+//      logLocationInfo(location);
+//      return isLocationStatusValid(newCommand, location);
     });
   }
 
@@ -904,12 +893,12 @@ public class ModbusTCPVehicleCommAdapter
     if (currentTransportOrder == null || !currentTransportOrder.equals(
         newCommand.getTransportOrder()
     )) {
-//      positionUpdater.stopPositionUpdates()
-//          .thenRun(() -> LOG.info("Position updates stopped successfully"))
-//          .exceptionally(ex -> {
-//            LOG.severe("Error stopping position updates: " + ex.getMessage());
-//            return null;
-//          });
+      positionUpdater.stopPositionUpdates()
+          .thenRun(() -> LOG.info("Position updates stopped successfully"))
+          .exceptionally(ex -> {
+            LOG.severe("Error stopping position updates: " + ex.getMessage());
+            return null;
+          });
       LOG.info(
           String.format(
               "New Transport order (%s) has received.", newCommand.getTransportOrder().getName()
@@ -917,6 +906,7 @@ public class ModbusTCPVehicleCommAdapter
       );
       currentTransportOrder = newCommand.getTransportOrder();
       allMovementCommands.clear();
+      isReachDestination = false;
     }
   }
 
@@ -979,22 +969,22 @@ public class ModbusTCPVehicleCommAdapter
     // Convert stationCommandsMap to ModbusCommand list
     for (Map.Entry<Long, Pair<CMD1, CMD2>> entry : stationCommandsMap.entrySet()) {
       long stationPosition = entry.getKey();
-      if (getProcessModel().getName().equals("SAA-mini-OHT-0001") && stationPosition == 109495) {
-        stationPosition = 109493;
-      }
+//      if (getProcessModel().getName().equals("SAA-mini-OHT-0001") && stationPosition == 109495) {
+//        stationPosition = 109493;
+//      }
 
-      if (stationPosition == 122355) {
-        if (getProcessModel().getName().equals("SAA-mini-OHT-0001")) {
-          stationPosition = 122353;
-        }
-        else if (getProcessModel().getName().equals("SAA-mini-OHT-0002")) {
-          stationPosition = 122357;
-        }
-      }
+//      if (stationPosition == 122355) {
+//        if (getProcessModel().getName().equals("SAA-mini-OHT-0001")) {
+//          stationPosition = 122353;
+//        }
+//        else if (getProcessModel().getName().equals("SAA-mini-OHT-0002")) {
+//          stationPosition = 122357;
+//        }
+//      }
 
-      if (getProcessModel().getName().equals("SAA-mini-OHT-0001") && stationPosition == 100940) {
-        stationPosition = 100937;
-      }
+//      if (getProcessModel().getName().equals("SAA-mini-OHT-0001") && stationPosition == 100940) {
+//        stationPosition = 100937;
+//      }
 
       Pair<CMD1, CMD2> cmds = entry.getValue();
       LOG.info(String.format("stationPosition: %d", stationPosition));
@@ -1699,7 +1689,7 @@ public class ModbusTCPVehicleCommAdapter
             this.isConnected = true;
             LOG.info("Successfully connected to Modbus TCP server");
             getProcessModel().setCommAdapterConnected(true);
-            startCatchWriteSingleRegister();
+//            startCatchWriteSingleRegister();
             startCatchReadSingleRegister();
 //            startHeartbeat();
             startErrorCode();
@@ -1933,25 +1923,6 @@ public class ModbusTCPVehicleCommAdapter
 //        throw new IllegalArgumentException("Value cannot be negative");
       }
     }
-
-    /**
-     * Returns the string representation of the value based on its format.
-     *
-     * @return A string representation of the value.
-     */
-    public String getFormattedValue() {
-      return switch (format) {
-        case DECIMAL -> String.valueOf(value);
-        case HEXADECIMAL -> String.format("%04X", value);
-      };
-    }
-
-    public String toLogString() {
-      return String.format(
-          "ModbusCommand{name='%s', value=%s, address=%d, format=%s}",
-          name, getFormattedValue(), address, format
-      );
-    }
   }
 
   /**
@@ -1963,18 +1934,21 @@ public class ModbusTCPVehicleCommAdapter
   }
 
   public class PositionUpdater {
-    private static final int UPDATE_INTERVAL = 500;
-    private static final int POSITION_REGISTER_ADDRESS = 109;
+    private static final int UPDATE_INTERVAL = 3000;
     private final ScheduledExecutorService executor;
     private ScheduledFuture<?> positionFuture;
     private String lastKnownPosition;
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final CountDownLatch shutdownLatch = new CountDownLatch(1);
     private final VehicleConfigurationProvider configProvider;
-    private VehicleConfiguration oldConfig;
-    private VehicleConfiguration newConfig;
     private String oldPosition = "";
     private boolean oldLoadStatus = false;
+    private final ScheduledExecutorService positionScheduledExecutor;
+    private int vehicleStatus = 0;
+    private int liftStatus = 0;
+    private int loadStatus = 0;
+    private int count = 0;
+    private boolean reachDest = false;
 
     private int oldMarkNo = 0;
 
@@ -1997,6 +1971,8 @@ public class ModbusTCPVehicleCommAdapter
       this.executor = executor;
       this.lastKnownPosition = null;
       this.configProvider = configProvider;
+      this.positionScheduledExecutor = new ScheduledThreadPoolExecutor(2);
+
     }
 
     /**
@@ -2007,7 +1983,7 @@ public class ModbusTCPVehicleCommAdapter
      */
     public void startPositionUpdates() {
       running.set(true);
-      positionFuture = customScheduledExecutor.scheduleWithFixedDelay(
+      positionFuture = positionScheduledExecutor.scheduleWithFixedDelay(
           () -> {
             if (!running.get()) {
               shutdownLatch.countDown();
@@ -2029,7 +2005,7 @@ public class ModbusTCPVehicleCommAdapter
           positionFuture.cancel(true);
         }
         try {
-          if (!shutdownLatch.await(1, TimeUnit.SECONDS)) {
+          if (!shutdownLatch.await(5, TimeUnit.SECONDS)) {
             LOG.warning("Timeout waiting for position updates to stop");
           }
         }
@@ -2046,13 +2022,30 @@ public class ModbusTCPVehicleCommAdapter
       }
 
       try {
-        int stationMark = getReadModbusInfo(readModbusMapMarkNo);
-
+//        int stationMark = getReadModbusInfo(readModbusMapMarkNo);
+        if (isReachDestination) {
+          LOG.info(
+              getProcessModel().getName() +
+                  "HAS REACH DESTINATIONNNNNNNN"
+          );
+          return;
+        }
+        int stationMark = this.count + 1;
         if (oldMarkNo != stationMark) {
+          LOG.info(String.format(getProcessModel().getName() + " stationMark: %d", stationMark));
           oldMarkNo = stationMark;
-          LOG.info("ModbusMapMarkNo : " + stationMark);
         }
         processPositionUpdate(stationMark);
+        if (this.count == 0) {
+          setVehicleStatus(1);
+        }
+        else if (count == allMovementCommands.size()) {
+          setVehicleStatus(2);
+          isReachDestination = true;
+          this.count = 0;
+          return;
+        }
+        this.count = this.count + 1;
       }
       catch (Exception ex) {
         LOG.warning(
@@ -2070,10 +2063,11 @@ public class ModbusTCPVehicleCommAdapter
       String openTcsPosition = convertToOpenTcsPosition(stationMark);
       Triple precisePosition = convertToPrecisePosition(currentPosition);
       getProcessModel().setPosition(openTcsPosition);
-      oldConfig = configProvider.getConfiguration(getProcessModel().getName());
-      Boolean newLoadStatus = getProcessModel().getLoadHandlingDevices().getFirst().isFull();
 
-      newConfig = new VehicleConfiguration(
+      VehicleConfiguration oldConfig = configProvider.getConfiguration(getProcessModel().getName());
+      boolean newLoadStatus = getProcessModel().getLoadHandlingDevices().getFirst().isFull();
+
+      VehicleConfiguration newConfig = new VehicleConfiguration(
           oldConfig.currentStrategy(),
           oldConfig.host(),
           oldConfig.port(),
@@ -2107,19 +2101,19 @@ public class ModbusTCPVehicleCommAdapter
         throw new IllegalArgumentException("Index out of positionModbusCommand bounds");
       }
       long tempPosition = positionModbusCommand.get((int) index - 1).value();
-      if (tempPosition == 109493) {
-        LOG.info("AT OHB POSITION");
-        tempPosition = 109495;
-      }
-      else if (tempPosition == 122353 || tempPosition == 122357) {
-        LOG.info("AT SIDEFORK POSITION");
-        tempPosition = 122355;
-      }
-
-      else if (tempPosition == 100937) {
-        LOG.info("AT EFEN POSITION");
-        tempPosition = 100940;
-      }
+//      if (tempPosition == 109493) {
+//        LOG.info("AT OHB POSITION");
+//        tempPosition = 109495;
+//      }
+//      else if (tempPosition == 122353 || tempPosition == 122357) {
+//        LOG.info("AT SIDEFORK POSITION");
+//        tempPosition = 122355;
+//      }
+//
+//      else if (tempPosition == 100937) {
+//        LOG.info("AT EFEN POSITION");
+//        tempPosition = 100940;
+//      }
 
       return tempPosition;
     }
@@ -2136,7 +2130,6 @@ public class ModbusTCPVehicleCommAdapter
       String position = positionMap.get(precisePosition);
       if (position != null) {
         positionUpdater.lastKnownPosition = position;
-        getProcessModel().setPosition(position);
         return position;
       }
       else {
@@ -2148,5 +2141,30 @@ public class ModbusTCPVehicleCommAdapter
       // Implement conversion from original position value to Triple
       return new Triple(position, 0, 0);
     }
+
+    private void setVehicleStatus(int value) {
+      this.vehicleStatus = value;
+    }
+
+    public int getVehicleStatus() {
+      return this.vehicleStatus;
+    }
+
+    private void setLiftStatus(int value) {
+      this.liftStatus = value;
+    }
+
+    public int getLiftStatus() {
+      return this.liftStatus;
+    }
+
+    private void setLoadStatus(int value) {
+      this.loadStatus = value;
+    }
+
+    public int getLoadStatus() {
+      return this.loadStatus;
+    }
+
   }
 }

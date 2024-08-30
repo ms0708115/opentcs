@@ -18,8 +18,8 @@ import org.opentcs.configuration.ConfigurationPrefix;
 public class VehicleConfigurationProvider {
   private static final Logger LOG = Logger.getLogger(VehicleConfigurationProvider.class.getName());
   private static final String CONFIG_FILE
-      = "D:\\ATC\\minioht\\config\\vehicle_config.json";
-//      = "C:\\Users\\user\\Desktop\\minioht\\config\\vehicle_config.json";
+//      = "D:\\ATC\\minioht\\config\\vehicle_config.json";
+      = "C:\\Users\\user\\Desktop\\minioht\\config\\vehicle_config.json";
 
   private final Map<String, VehicleConfiguration> configurations = new HashMap<>();
 
