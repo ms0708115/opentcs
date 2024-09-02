@@ -195,7 +195,7 @@ public class ModbusTCPVehicleCommAdapter
       PlantModelService plantModelService,
       PeripheralService peripheralService
   ) {
-    super(new CustomProcessModel(vehicle), "RECHARGE", 1000, executor);
+    super(new CustomProcessModel(vehicle), "RECHARGE", Integer.MAX_VALUE, executor);
     this.configProvider = new VehicleConfigurationProvider();
 
     this.host = configProvider.getConfiguration(vehicle.getName()).host();
@@ -906,7 +906,6 @@ public class ModbusTCPVehicleCommAdapter
       );
       currentTransportOrder = newCommand.getTransportOrder();
       allMovementCommands.clear();
-      isReachDestination = false;
     }
   }
 
@@ -940,7 +939,7 @@ public class ModbusTCPVehicleCommAdapter
           LOG.info("Starting Positioning.");
           positionUpdater.startPositionUpdates();
           LOG.info("Starting Mission.");
-
+          isReachDestination = false;
         })
         .exceptionally(ex -> {
           LOG.severe("Failed to write commands and start monitoring: " + ex.getMessage());
