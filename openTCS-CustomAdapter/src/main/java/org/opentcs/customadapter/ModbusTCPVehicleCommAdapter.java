@@ -194,7 +194,7 @@ public class ModbusTCPVehicleCommAdapter
       PlantModelService plantModelService,
       PeripheralService peripheralService
   ) {
-    super(new CustomProcessModel(vehicle), "RECHARGE", 1000, executor);
+    super(new CustomProcessModel(vehicle), "RECHARGE", Integer.MAX_VALUE, executor);
     this.configProvider = new VehicleConfigurationProvider();
 
     this.host = configProvider.getConfiguration(vehicle.getName()).host();
